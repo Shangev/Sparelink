@@ -1,0 +1,126 @@
+// screens/OrderConfirmationScreen.tsx
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ImageBackground,
+  TouchableOpacity,
+  Image,
+} from 'react-native';
+import { Truck, ChevronLeft, ShoppingCart } from 'lucide-react-native';
+
+export default function OrderConfirmationScreen({ navigation }: any) {
+  return (
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1581092580490-4a0e3be6f9b0?w=900' }}
+      style={styles.background}
+      blurRadius={14}
+    >
+      <View style={styles.overlay} />
+
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation?.goBack()}>
+            <ChevronLeft size={28} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Order Confirmation</Text>
+          <TouchableOpacity>
+            <ShoppingCart size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Main Order Card */}
+        <View style={styles.card}>
+          {/* Part Name & Images */}
+          <Text style={styles.partName}>Brake Pad Set</Text>
+          <View style={styles.partImages}>
+            <Image
+              source={{ uri: 'https://images.unsplash.com/photo-1622213203018-6f5c9b8d0c5e?w=600' }}
+              style={styles.mainImage}
+            />
+            <Image
+              source={{ uri: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600' }}
+              style={styles.sideImage}
+            />
+          </View>
+
+          {/* Shop Info */}
+          <View style={styles.shopRow}>
+            <Text style={styles.shopLabel}>Shop</Text>
+            <View>
+              <Text style={styles.shopName}>AutoParts Hub</Text>
+              <View style={styles.activeBadge}>
+                <Text style={styles.activeText}>Active</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Price Breakdown */}
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Part Price</Text>
+            <Text style={styles.priceValue}>$45.99</Text>
+          </View>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Delivery Fee</Text>
+            <Text style={styles.priceValue}>$5.00</Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total Price</Text>
+            <Text style={styles.totalValue}>$50.99</Text>
+          </View>
+
+          {/* Delivery Estimate */}
+          <View style={styles.deliveryRow}>
+            <Truck size={22} color="#FF9500" />
+            <View style={{ marginLeft: 12 }}>
+              <Text style={styles.deliveryLabel}>Estimated Delivery:</Text>
+              <Text style={styles.deliveryTime}>2–3 Business Days</Text>
+            </View>
+          </View>
+
+          {/* Payment Method */}
+          <Text style={styles.sectionTitle}>Payment Method</Text>
+          <TouchableOpacity style={[styles.paymentOption, styles.selectedPayment]}>
+            <View style={styles.radioOuter}>
+              <View style={styles.radioInner} />
+            </View>
+            <Text style={styles.paymentText}>Cash on Delivery</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.paymentOption} disabled>
+            <View style={styles.radioOuterDisabled} />
+            <Text style={styles.paymentTextDisabled}>EFT (Coming Soon)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Place Order Button */}
+        <TouchableOpacity style={styles.placeOrderButton}>
+          <Text style={styles.placeOrderText}>Place Order</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  background: { flex: 1 },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  container: { flex: 1, paddingTop: 50, paddingHorizontal: 20 },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 32,
+  },
+  title: { fontSize: 28, fontWeight: '800', color: '#fff' },
+
+  card

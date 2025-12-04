@@ -1,0 +1,300 @@
+npm install @react-navigation/native @react-navigation/stack
+npm install react-native-vision-camera react-native-reanimated react-native-gesture-handler
+npm install @gorhom/bottom-sheet react-native-safe-area-context
+npx pod-install   # iOS only
+
+
+// RequestPartFlow.tsx
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  ImageBackground,
+  Modal,
+  FlatList,
+  ScrollView,
+} from 'react-native';
+import {
+  Camera,
+  Flash,
+  X,
+  ChevronLeft,
+  Send,
+  Check,
+  Car,
+  Calendar,
+} from 'lucide-react-native';
+import { Camera as VisionCamera, useCameraDevices } from 'react-native-vision-camera';
+
+export default function RequestPartFlow() {
+  const [step, setStep] = useState<'camera' | 'details'>('camera');
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [flashOn, setFlashOn] = useState(false);
+  const [selectedMake, setSelectedMake] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
+
+  const devices = useCameraDevices();
+  const device = devices.back;
+  const camera = useRef<VisionCamera>(null);
+
+  const takePicture = async () => {
+    if (camera.current) {
+      const photoResult = await camera.current.takePhoto({
+        flash: flashOn ? 'on' : 'off',
+      });
+      setPhoto(`file://${photoResult.path}`);
+    }
+  };
+
+  const toggleCategory = (cat: string) => {
+    setCategories(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    );
+  };
+
+  if (!device) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Camera Not Available</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1581092580490-4a0e3be6f9b0?w=800' }}
+      style={styles.background}
+      blurRadius={12}
+    >
+      {/* CAMERA SCREEN */}
+      {step === 'camera' && !photo && (
+        <View style={styles.container}>
+          <VisionCamera
+            ref={camera}
+            style={StyleSheet.absoluteFill}
+            device={device}
+            isActive={true}
+            photo={true}
+            flash={flashOn ? 'on' : 'off'}
+          />
+
+          {/* Top Controls */}
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => {/* go back */}}>
+              <ChevronLeft size={28} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setFlashOn(!flashOn)}>
+              <Flash size={28} color={flashOn ? '#FFD700' : '#fff'} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Capture Button */}
+          <View style={styles.captureContainer}>
+            <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+              <Camera size={36} color="#000" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* AFTER CAPTURE – Retake / Confirm */}
+      {step === 'camera' && photo && (
+        <View style={styles.container}>
+          <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} />
+
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => setPhoto(null)}>
+              <X size={32} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.bottomActions}>
+            <TouchableOpacity onPress={() => setPhoto(null)}>
+              <Text style={styles.actionText}>Retake</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.confirmButton}
+              onPress={() => setStep('details')}
+            >
+              <Text style={styles.confirmText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* SCREEN 2 – Add Car Details */}
+      {step === 'details' && (
+        <ScrollView contentContainerStyle={styles.detailsContainer}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={() => setStep('camera')}>
+              <ChevronLeft size={28} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Add Car Details</Text>
+            <View style={{ width: 28 }} />
+          </View>
+
+          {/* Photo Preview */}
+          {photo && (
+            <Image source={{ uri: photo }} style={styles.photoPreview} />
+          )}
+
+          {/* Car Make */}
+          <Text style={styles.label}>Car Make</Text>
+          <TouchableOpacity style={styles.dropdown}>
+            <Text style={styles.dropdownText}>
+              {selectedMake || 'Select make (Toyota, VW, Ford...)'}
+            </Text>
+            <Car size={20} color="#888" />
+          </TouchableOpacity>
+
+          {/* Model & Year Row */}
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <Text style={styles.label}>Car Model</Text>
+              <TouchableOpacity style={styles.dropdown}>
+                <Text style={styles.dropdownText}>{selectedModel || 'Model'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.halfInput}>
+              <Text style={styles.label}>Year</Text>
+              <TouchableOpacity style={styles.dropdown}>
+                <Text style={styles.dropdownText}>{selectedYear || 'Year'}</Text>
+                <Calendar size={20} color="#888" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Category Chips */}
+          <Text style={styles.label}>Part Category</Text>
+          <View style={styles.chipsContainer}>
+            {['Engine', 'Suspension', 'Electrical', 'Body', 'Other'].map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.chip,
+                  categories.includes(cat) && styles.chipSelected,
+                ]}
+                onPress={() => toggleCategory(cat)}
+              >
+                {categories.includes(cat) && <Check size={16} color="#fff" />}
+                <Text
+                  style={[
+                    styles.chipText,
+                    categories.includes(cat) && styles.chipTextSelected,
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Send Request Button */}
+          <TouchableOpacity style={styles.sendButton}>
+            <Send size={24} color="#000" />
+            <Text style={styles.sendButtonText}>Send Request</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  background: { flex: 1, paddingTop: 50 },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  captureContainer: {
+    position: 'absolute',
+    bottom: 80,
+    alignSelf: 'center',
+  },
+  captureButton: {
+    backgroundColor: '#fff',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 5,
+    borderColor: '#333',
+  },
+  bottomActions: {
+    position: 'absolute',
+    bottom: 80,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingHorizontal: 40,
+  },
+  actionText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  confirmButton: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 30,
+  },
+  confirmText: { color: '#000', fontSize: 18, fontWeight: '700' },
+
+  // Details Screen
+  detailsContainer: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 100 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
+  photoPreview: {
+    width: '100%',
+    height: 300,
+    borderRadius: 20,
+    marginBottom: 30,
+  },
+  label: { color: '#aaa', fontSize: 14, marginBottom: 8, marginTop: 16 },
+  dropdown: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    padding: 16,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  dropdownText: { color: '#fff', fontSize: 17 },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  halfInput: { width: '48%' },
+  chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  chipSelected: { backgroundColor: '#fff' },
+  chipText: { color: '#ccc', marginLeft: 6 },
+  chipTextSelected: { color: '#000', fontWeight: '600' },
+  sendButton: {
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 18,
+    borderRadius: 30,
+    marginTop: 40,
+    gap: 10,
+  },
+  sendButtonText: { color: '#000', fontSize: 18, fontWeight: '700' },
+});

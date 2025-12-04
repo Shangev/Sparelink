@@ -1,0 +1,92 @@
+// screens/OffersReceivedScreen.tsx
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  FlatList,
+  Image,
+  ImageBackground,
+  TouchableOpacity,
+} from 'react-native';
+import { Truck, MessageCircle, ChevronLeft } from 'lucide-react-native';
+
+const offers = [
+  {
+    id: '1',
+    shopName: 'A Shop',
+    shopInitial: 'A',
+    distance: '4.1 km',
+    rating: 4.2,
+    partPrice: 420,
+    deliveryFee: 50,
+    totalPrice: 470,
+    stockStatus: ['In Stock', '1 Left', 'Used Part'],
+    eta: '45–60 minutes',
+    images: [
+      'https://images.unsplash.com/photo-1622213203018-6f5c9b8d0c5e?w=600',
+      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600',
+      'https://images.unsplash.com/photo-1581092580490-4a0e3be6f9b0?w=600',
+      'https://images.unsplash.com/photo-1558618047-b7178b422f2f?w=600',
+      'https://images.unsplash.com/photo-1620714222781-2b9c0e2f6e0d?w=600',
+    ],
+  },
+  // Add more offers here...
+];
+
+export default function OffersReceivedScreen({ navigation }: any) {
+  const renderOffer = ({ item }: any) => (
+    <View style={styles.card}>
+      {/* Shop Header */}
+      <View style={styles.shopHeader}>
+        <View style={styles.shopLogo}>
+          <Text style={styles.shopInitial}>{item.shopInitial}</Text>
+        </View>
+        <View style={styles.shopInfo}>
+          <Text style={styles.shopName}>{item.shopName}</Text>
+          <View style={styles.distanceRating}>
+            <Text style={styles.distance}>{item.distance}</Text>
+            <Text style={styles.rating}>★ {item.rating}"</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Horizontal Part Images */}
+      <Text style={styles.sectionLabel}>Part Image</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.imageScroll}
+        contentContainerStyle={styles.imageContainer}
+      >
+        {item.images.map((img: string, idx: number) => (
+          <Image key={idx} source={{ uri: img }} style={styles.partImage} />
+        ))}
+      </ScrollView>
+
+      {/* Pricing */}
+      <View style={styles.pricingContainer}>
+        <View>
+          <Text style={styles.label}>Part Details</Text>
+          <Text style={styles.priceLine}>Part: R{item.partPrice}</Text>
+          <Text style={styles.priceLine}>Delivery: R{item.deliveryFee}</Text>
+          <Text style={styles.totalPrice}>Total: R{item.totalPrice}</Text>
+        </View>
+
+        <View style={styles.rightPricing}>
+          <Text style={styles.priceLine}>Part: R{item.partPrice}</Text>
+          <Text style={styles.priceLine}>Delivery: R{item.deliveryFee}</Text>
+          <Text style={styles.totalPriceRight}>Total: R{item.totalPrice}</Text>
+        </View>
+      </View>
+
+      {/* Stock Badges */}
+      <View style={styles.stockBadges}>
+        <View style={[styles.badge, styles.inStockBadge]}>
+          <Text style={styles.badgeText}>In Stock</Text>
+        </View>
+        <View style={[styles.badge, styles.oneLeftBadge]}>
+          <Text style={styles.oneLeftText}>1 Left</Text>
+        </View>
+        <

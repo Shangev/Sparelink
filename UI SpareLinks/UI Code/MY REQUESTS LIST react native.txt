@@ -1,0 +1,288 @@
+// RequestDetailsScreen.tsx
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Image,
+  ImageBackground,
+  Modal,
+} from 'react-native';
+import {
+  ChevronLeft,
+  Camera,
+  Send,
+  AlertCircle,
+} from 'lucide-react-native';
+
+export default function RequestDetailsScreen({ navigation }: any) {
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [year, setYear] = useState('');
+  const [engineSize, setEngineSize] = useState('');
+  const [vin, setVin] = useState('');
+  const [description, setDescription] = useState('');
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [showImageZoom, setShowImageZoom] = useState(false);
+
+  // Mock uploaded photo (replace with real URI from camera)
+  const uploadedPhoto = 'https://images.unsplash.com/photo-1544636331-90447b0f34c8?w=800';
+
+  return (
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1581092580490-4a0e3be6f9b0?w=800' }}
+      style={styles.background}
+      blurRadius={12}
+    >
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation?.goBack()}>
+            <ChevronLeft size={28} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Request Details</Text>
+          <View style={{ width: 28 }} />
+        </View>
+
+        <Text style={styles.timestamp}>Created: 12:14 PM</Text>
+
+        {/* Uploaded Part Photo */}
+        <TouchableOpacity
+          style={styles.photoCard}
+          activeOpacity={0.9}
+          onPress={() => setShowImageZoom(true)}
+        >
+          <Image source={{ uri: uploadedPhoto }} style={styles.photo} />
+          <TouchableOpacity style={styles.replaceButton}>
+            <Text style={styles.replaceText}>Replace Image</Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* Vehicle Information */}
+        <Text style={styles.sectionTitle}>Vehicle Information</Text>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Make</Text>
+          <TouchableOpacity style={styles.dropdown}>
+            <Text style={make ? styles.inputText : styles.placeholder}>
+              {make || 'Toyota, Honda, VW...'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.row}>
+          <View style={styles.half}>
+            <Text style={styles.label}>Model</Text>
+            <TextInput
+              style={styles.input}
+              value={model}
+              onChangeText={setModel}
+              placeholder="e.g. Camry"
+              placeholderTextColor="#666"
+            />
+          </View>
+          <View style={styles.half}>
+            <Text style={styles.label}>Year</Text>
+            <TextInput
+              style={styles.input}
+              value={year}
+              onChangeText={setYear}
+              placeholder="2020"
+              keyboardType="number-pad"
+              placeholderTextColor="#666"
+            />
+          </View>
+        </View>
+
+        <View style={styles.row}>
+          <View style={styles.half}>
+            <Text style={styles.label}>Engine Size</Text>
+            <TextInput
+              style={styles.input}
+              value={engineSize}
+              onChangeText={setEngineSize}
+              placeholder="2.5L"
+              placeholderTextColor="#666"
+            />
+          </View>
+          <View style={styles.half}>
+            <Text style={styles.label}>VIN (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={vin}
+              onChangeText={setVin}
+              placeholder="Enter VIN"
+              placeholderTextColor="#666"
+            />
+          </View>
+        </View>
+
+        {/* Part Description */}
+        <Text style={styles.sectionTitle}>Part Description</Text>
+        <TextInput
+          style={styles.multiline}
+          value={description}
+          onChangeText={setDescription}
+          placeholder="e.g. front left lower control arm bent"
+          placeholderTextColor="#666"
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
+
+        {/* Urgency */}
+        <Text style={styles.sectionTitle}>Urgency</Text>
+        <View style={styles.urgencyContainer}>
+          <TouchableOpacity
+            style={[styles.urgencyButton, !isUrgent && styles.urgencyActive]}
+            onPress={() => setIsUrgent(false)}
+          >
+            <Text style={[styles.urgencyText, !isUrgent && styles.urgencyTextActive]}>
+              Normal
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.urgencyButton, styles.urgentButton, isUrgent && styles.urgencyActive]}
+            onPress={() => setIsUrgent(true)}
+          >
+            <AlertCircle size={18} color={isUrgent ? '#fff' : '#ff4444'} />
+            <Text style={[styles.urgencyText, isUrgent && styles.urgencyTextActive]}>
+              URGENT
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Send Button */}
+        <TouchableOpacity style={styles.sendButton}>
+          <Send size={24} color="#000" />
+          <Text style={styles.sendButtonText}>Send Request to Shops</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* Fullscreen Image Zoom Modal */}
+      <Modal visible={showImageZoom} transparent>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.closeModal} onPress={() => setShowImageZoom(false)}>
+            <Text style={styles.closeText}>×</Text>
+          </TouchableOpacity>
+          <Image source={{ uri: uploadedPhoto }} style={styles.fullscreenImage} resizeMode="contain" />
+        </View>
+      </Modal>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  background: { flex: 1 },
+  container: { flex: 1, paddingTop: 50, paddingHorizontal: 20 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  title: { fontSize: 24, fontWeight: '800', color: '#fff' },
+  timestamp: { fontSize: 14, color: '#aaa', marginBottom: 24, textAlign: 'center' },
+
+  photoCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+  },
+  photo: {
+    width: '100%',
+    height: 240,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  replaceButton: { alignSelf: 'flex-end' },
+  replaceText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 16 },
+
+  inputGroup: { marginBottom: 16 },
+  label: { color: '#aaa', fontSize: 14, marginBottom: 8 },
+  dropdown: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    padding: 16,
+    borderRadius: 16,
+    color: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  placeholder: { color: '#666' },
+  inputText: { color: '#fff' },
+
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  half: { width: '48%' },
+
+  multiline: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    padding: 16,
+    borderRadius: 16,
+    color: '#fff',
+    height: 120,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 32,
+  },
+
+  urgencyContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 30,
+    padding: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 40,
+  },
+  urgencyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+  },
+  urgentButton: { backgroundColor: 'rgba(255,68,68,0.2)' },
+  urgencyActive: { backgroundColor: '#fff' },
+  urgencyText: { color: '#ccc', fontWeight: '600' },
+  urgencyTextActive: { color: '#000', fontWeight: '700' },
+
+  sendButton: {
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 18,
+    borderRadius: 30,
+    gap: 10,
+    marginBottom: 20,
+  },
+  sendButtonText: { color: '#000', fontSize: 18, fontWeight: '700' },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeModal: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
+  closeText: { fontSize: 40, color: '#fff' },
+  fullscreenImage: { width: '100%', height: '100%' },
+});

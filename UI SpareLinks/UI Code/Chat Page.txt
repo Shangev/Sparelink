@@ -1,0 +1,220 @@
+// screens/ChatWithShopScreen.tsx
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  ImageBackground,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { Phone, Send, Mic, Paperclip, MapPin, MessageSquare } from 'lucide-react-native';
+
+type Message = {
+  id: string;
+  text?: string;
+  image?: string;
+  voice?: boolean;
+  isMechanic: boolean;
+  timestamp: string;
+  quickReply?: string;
+};
+
+const messages: Message[] = [
+  { id: '1', text: 'Hi, I need a replacement part for my car. Can you help?', isMechanic: true, timestamp: '10:30 AM' },
+  { id: '2', text: 'Yes, sure! What type of car do you have?', isMechanic: false, timestamp: '10:30 AM' },
+  { id: '3', text: "It's a 2015 Toyota Corolla. The part number is XXZ-123.", isMechanic: true, timestamp: '10:30 AM' },
+  { id: '4', text: 'Can you send a picture of the part?', isMechanic: true, timestamp: '10:30 AM', image: 'https://images.unsplash.com/photo-1622213203018-6f5c9b8d0c5e?w=600' },
+  { id: '5', text: "Here's the part you need.", isMechanic: false, timestamp: '10:30 AM', image: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600' },
+  { id: '6', text: 'Would you like to confirm the order?', isMechanic: false, timestamp: '10:30 AM', quickReply: 'Confirm Order' },
+  { id: '7', text: 'Yes, please. Also, can you send the price?', isMechanic: true, timestamp: '10:30 AM', voice: true },
+];
+
+export default function ChatWithShopScreen({ navigation }: any) {
+  const renderMessage = ({ item }: { item: Message }) => {
+    if (item.isMechanic) {
+      return (
+        <View style={styles.mechanicMessageContainer}>
+          <View style={styles.mechanicBubble}>
+            {item.text && <Text style={styles.mechanicText}>{item.text}</Text>}
+            {item.image && <Image source={{ uri: item.image }} style={styles.chatImage} />}
+            {item.voice && <View style={styles.voiceNote}><Mic size={20} color="#fff" /><Text style={styles.voiceText}>Voice note · 0:12</Text></View>}
+            <Text style={styles.timestampRight}>{item.timestamp}</Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.shopMessageContainer}>
+        <View style={styles.shopBubble}>
+          {item.text && <Text style={styles.shopText}>{item.text}</Text>}
+          {item.image && <Image source={{ uri: item.image }} style={styles.chatImage} />}
+          {item.quickReply && (
+            <TouchableOpacity style={styles.quickReplyButton}>
+              <Text style={styles.quickReplyText}>{item.quickReply}</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.timestampLeft}>{item.timestamp}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1581092580490-4a0e3be6f9b0?w=900' }}
+      style={styles.background}
+      blurRadius={12}
+    >
+      <View style={styles.overlay} />
+
+      <SafeAreaView style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.shopInfo}>
+            <Image
+              source={{ uri: 'https://images.unsplash.com/photo-1542282088-0f21a0f2e4c6?w=200' }}
+              style={styles.shopAvatar}
+            />
+            <View>
+              <Text style={styles.shopName}>AutoParts Hub</Text>
+              <View style={styles.onlineRow}>
+                <View style={styles.onlineDot} />
+                <Text style={styles.onlineText}>Online</Text>
+              </View>
+            </View>
+          </View>
+          <TouchableOpacity>
+            <Phone size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Messages */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <FlatList
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            inverted
+            contentContainerStyle={styles.messageList}
+          />
+
+          {/* Sticky Confirm Order Button */}
+          <View style={styles.stickyButtonContainer}>
+            <TouchableOpacity style={styles.confirmButton}>
+              <Send size={22} color="#fff" style={{ marginRight: 10 }} />
+              <Text style={styles.confirmButtonText}>Confirm Order – R470 Total</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Input Bar (hidden in this mockup as per design) */}
+          <View style={styles.inputBar}>
+            <TouchableOpacity><Paperclip size={24} color="#888" /></TouchableOpacity>
+            <View style={styles.input} />
+            <TouchableOpacity><Mic size={24} color="#007AFF" /></TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  background: { flex: 1 },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' },
+  container: { flex: 1 },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  shopInfo: { flexDirection: 'row', alignItems: 'center' },
+  shopAvatar: { width: 44, height: 44, borderRadius: 22, marginRight: 12 },
+  shopName: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  onlineRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50', marginRight: 6 },
+  onlineText: { fontSize: 13, color: '#4CAF50' },
+
+  messageList: { padding: 20, paddingBottom: 100 },
+
+  mechanicMessageContainer: { alignItems: 'flex-end', marginVertical: 6 },
+  mechanicBubble: {
+    backgroundColor: '#007AFF',
+    padding: 14,
+    borderRadius: 20,
+    borderBottomRightRadius: 4,
+    maxWidth: '80%',
+    marginLeft: 50,
+  },
+  mechanicText: { color: '#fff', fontSize: 16 },
+
+  shopMessageContainer: { alignItems: 'flex-start', marginVertical: 6 },
+  shopBubble: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    padding: 14,
+    borderRadius: 20,
+    borderBottomLeftRadius: 4,
+    maxWidth: '80%',
+    marginRight: 50,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  shopText: { color: '#fff', fontSize: 16 },
+
+  chatImage: { width: 180, height: 180, borderRadius: 16, marginTop: 10 },
+
+  voiceNote: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  voiceText: { color: '#fff', marginLeft: 8, fontSize: 14 },
+
+  quickReplyButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 30,
+    alignSelf: 'flex-start',
+    marginTop: 12,
+  },
+  quickReplyText: { color: '#fff', fontWeight: '600' },
+
+  timestampRight: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 6, alignSelf: 'flex-end' },
+  timestampLeft: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 6 },
+
+  stickyButtonContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  confirmButton: {
+    backgroundColor: '#007AFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderRadius: 30,
+  },
+  confirmButtonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    gap: 16,
+  },
+  input: { flex: 1, height: 44, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 22 },
+});

@@ -1,0 +1,305 @@
+// screens/RequestSummaryScreen.tsx
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ImageBackground,
+} from 'react-native';
+import { ChevronLeft, RefreshCw, Eye, Edit3 } from 'lucide-react-native';
+
+export default function RequestSummaryScreen({ navigation }: any) {
+  const [offerCount, setOfferCount] = useState(0); // In real app: from WebSocket / Redux
+
+  const progressSteps = [
+    { label: 'Sent to Shops', completed: true },
+    { label: 'Offers Incoming', completed: true },
+    { label: 'You Selected a Shop', completed: false },
+    { label: 'Delivery', completed: false },
+  ];
+
+  return (
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1581092580490-4a0e3be6f9b0?w=900' }}
+      style={styles.background}
+      blurRadius={12}
+    >
+      <View style={styles.overlay} />
+
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation?.goBack()}>
+            <ChevronLeft size={28} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Request Summary</Text>
+          <View style={{ width: 28 }} />
+        </View>
+
+        {/* Part Image */}
+        <View style={styles.imageCard}>
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1622213203018-6f5c9b8d0c5e?w=800' }}
+            style={styles.partImage}
+            resizeMode="cover"
+          />
+        </View>
+
+        {/* Request Info Card */}
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionTitle}>Request Info</Text>
+
+          <View style={styles.infoRow}>
+            <View>
+              <Text style={styles.label}>Vehicle</Text>
+              <Text style={styles.value}>2015 Toyota Camry</Text>
+            </View>
+            <View>
+              <Text style={styles.label}>Mechanic</Text>
+              <Text style={styles.value}>John Doe</Text>
+              <Text style={styles.subValue}>Certified Mechanic with 10 years experience</Text>
+            </View>
+          </View>
+
+          <View style={styles.infoRow}>
+            <View>
+              <Text style={styles.label}>Request Date & Time</Text>
+              <Text style={styles.value}>Today at 2:30 PM</Text>
+            </View>
+          </View>
+
+          {/* Progress Steps */}
+          <View style={styles.progressContainer}>
+            {progressSteps.map((step, index) => (
+              <View key={index} style={styles.step}>
+                <View
+                  style={[
+                    styles.stepDot,
+                    step.completed ? styles.stepDotActive : styles.stepDotInactive,
+                  ]}
+                >
+                  {step.completed && <View style={styles.stepDotInner} />}
+                </View>
+                {index < progressSteps.length - 1 && (
+                  <View
+                    style={[
+                      styles.stepLine,
+                      step.completed && index === 0 ? styles.stepLineActive : null,
+                    ]}
+                  />
+                )}
+                <Text
+                  style={[
+                    styles.stepLabel,
+                    step.completed ? styles.stepLabelActive : styles.stepLabelInactive,
+                  ]}
+                >
+                  {step.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Offer Section */}
+        <View style={styles.offerCard}>
+          <Text style={styles.sectionTitle}>Offer Section</Text>
+
+          <View style={styles.offerCounter}>
+            <Text style={styles.offerText}>Offers: {offerCount} yet</Text>
+            <RefreshCw size={20} color="#999" style={{ marginLeft: 8 }} />
+          </View>
+
+          {/* Action Buttons */}
+          <TouchableOpacity
+            style={[styles.button, styles.primaryButton]}
+            onPress={() => navigation?.navigate('OffersList')}
+          >
+            <Eye size={22} color="#000" />
+            <Text style={styles.primaryButtonText}>View Offers</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.secondaryButton]}
+            onPress={() => navigation?.navigate('EditRequest')}
+          >
+            <Edit3 size={22} color="#fff" />
+            <Text style={styles.secondaryButtonText}>Edit Request</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  background: { flex: 1 },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  container: { flex: 1, paddingTop: 50, paddingHorizontal: 20 },
+
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  title: { fontSize: 26, fontWeight: '800', color: '#fff' },
+
+  imageCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 24,
+    padding: 8,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  partImage: {
+    width: '100%',
+    height: 240,
+    borderRadius: 18,
+  },
+
+  infoCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 20,
+  },
+  infoRow: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 4,
+  },
+  value: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  subValue: {
+    fontSize: 14,
+    color: '#ccc',
+    marginTop: 4,
+  },
+
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  step: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  stepDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  stepDotActive: {
+    backgroundColor: '#2962FF',
+  },
+  stepDotInactive: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  stepDotInner: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+  },
+  stepLine: {
+    position: 'absolute',
+    top: 16,
+    left: 32,
+    right: -16,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    zIndex: -1,
+  },
+  stepLineActive: {
+    backgroundColor: '#2962FF',
+  },
+  stepLabel: {
+    fontSize: 11,
+    textAlign: 'center',
+    width: 80,
+  },
+  stepLabelActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  stepLabelInactive: {
+    color: '#777',
+  },
+
+  offerCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  offerCounter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+  },
+  offerText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderRadius: 30,
+    marginBottom: 16,
+    gap: 12,
+  },
+  primaryButton: {
+    backgroundColor: '#fff',
+  },
+  primaryButtonText: {
+    color: '#000',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  secondaryButton: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  secondaryButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+});

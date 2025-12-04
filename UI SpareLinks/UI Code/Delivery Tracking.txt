@@ -1,0 +1,265 @@
+// screens/DeliveryTrackingScreen.tsx
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ImageBackground,
+  TouchableOpacity,
+  Image,
+} from 'react-native';
+import { Phone, ChevronLeft, Truck, Wrench, CheckCircle } from 'lucide-react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+
+export here
+
+export default function DeliveryTrackingScreen({ navigation }: any) {
+  const routeCoordinates = [
+    { latitude: -26.123, longitude: 28.045 },
+    { latitude: -26.135, longitude: 28.052 },
+    { latitude: -26.148, longitude: 28.065 },
+    { latitude: -26.158, longitude: 28.078 },
+  ];
+
+  return (
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1581092580490-4a0e3be6f9b0?w=900' }}
+      style={styles.background}
+      blurRadius={10}
+    >
+      <View style={styles.overlay} />
+
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation?.goBack()}>
+            <ChevronLeft size={28} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Delivery Tracking</Text>
+          <View style={{ width: 28 }} />
+        </View>
+
+        {/* Map Section */}
+        <View style={styles.mapContainer}>
+          <MapView
+            style={StyleSheet.absoluteFillObject}
+            initialRegion={{
+              latitude: -26.135,
+              longitude: 28.058,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            }}
+            provider="google"
+            customMapStyle={darkMapStyle} // optional dark map style
+          >
+            {/* Shop Location */}
+            <Marker coordinate={{ latitude: -26.123, longitude: 28.045 }}>
+              <View style={styles.shopPin}>
+                <Wrench size={20} color="#fff" />
+              </View>
+            </Marker>
+
+            {/* Mechanic Location */}
+            <Marker coordinate={{ latitude: -26.158, longitude: 28.078 }}>
+              <View style={styles.mechanicPin}>
+                <Text style={styles.pinText}>Wrench</Text>
+              </View>
+            </Marker>
+
+            {/* Driver (Moving) */}
+            <Marker coordinate={{ latitude: -26.145, longitude: 28.060 }}>
+              <View style={styles.driverCar}>
+                <Truck size={32} color="#007AFF" />
+              </View>
+            </Marker>
+
+            <Polyline
+              coordinates={routeCoordinates}
+              strokeColor="#007AFF"
+              strokeWidth={5}
+              lineCap="round"
+            />
+          </MapView>
+
+          {/* ETA Badge */}
+          <View style={styles.etaBadge}>
+            <Text style={styles.etaText}>Arriving in 18 min</Text>
+          </View>
+
+          {/* Driver Info Card */}
+          <View style={styles.driverCard}>
+            <Image
+              source={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400' }}
+              style={styles.driverAvatar}
+            />
+            <View style={styles.driverInfo}>
+              <Text style={styles.driverName}>John Doe</Text>
+              <Text style={styles.carDetails}>Toyota Corolla · XYZ 456</Text>
+            </View>
+            <TouchableOpacity style={styles.callButton}>
+              <Phone size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Order Summary */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <Text style={styles.partName}>Brake Pads</Text>
+            <Text style={styles.totalPrice}>R470.00</Text>
+          </View>
+          <View style={styles.shopRow}>
+            <Text style={styles.shopLabel}>Shop</Text>
+            <Text style={styles.shopName}>AutoFix Garage</Text>
+          </View>
+        </View>
+
+        {/* Status Steps */}
+        <View style={styles.statusCard}>
+          <View style={styles.statusItem}>
+            <View style={styles.statusIconActive}>
+              <Truck size={20} color="#fff" />
+            </View>
+            <Text style={styles.statusTextActive}>Shop Preparing</Text>
+          </View>
+
+          <View style={styles.statusItem}>
+            <View style={styles.statusIconDone}>
+              <CheckCircle size={24} color="#007AFF" />
+            </View>
+            <Text style={styles.statusTextDone}>Driver Picked Up</Text>
+          </View>
+
+          <View style={styles.statusItem}>
+            <View style={styles.statusIconDone}>
+              <CheckCircle size={24} color="#007AFF" />
+            </View>
+            <Text style={styles.statusTextDone}>On The Way</Text>
+          </View>
+
+          <View style={styles.statusItem}>
+            <View style={styles.statusIconDone}>
+              <CheckCircle size={24} color="#007AFF" />
+            </View>
+            <Text style={styles.statusTextDone}>Arrived</Text>
+          </View>
+        </View>
+      </View>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  background: { flex: 1 },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' },
+  container: { flex: 1, paddingTop: 50 },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  title: { fontSize: 26, fontWeight: '800', color: '#fff' },
+
+  mapContainer: {
+    height: 320,
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  etaBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  etaText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  driverCard: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  driverAvatar: { width: 56, height: 56, borderRadius: 28 },
+  driverInfo: { marginLeft: 12, flex: 1 },
+  driverName: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  carDetails: { color: '#ccc', fontSize: 14, marginTop: 2 },
+  callButton: {
+    backgroundColor: '#007AFF',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  shopPin: { backgroundColor: '#FF3B30', padding: 8, borderRadius: 20 },
+  mechanicPin: { backgroundColor: '#34C759', padding: 8, borderRadius: 20 },
+  pinText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
+  driverCar: { transform: [{ rotate: '30deg' }] },
+
+  summaryCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 20,
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  partName: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  totalPrice: { color: '#fff', fontSize: 24, fontWeight: '800' },
+  shopRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  shopLabel: { color: '#aaa' },
+  shopName: { color: '#fff', fontSize: 16, fontWeight: '600' },
+
+  statusCard: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 20,
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  statusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  statusIconActive: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  statusIconDone: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  statusTextActive: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  statusTextDone: { color: '#888', fontSize: 17 },
+});
+
+const darkMapStyle = [ /* Add Google Maps dark style JSON here if needed */ ];
