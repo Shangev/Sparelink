@@ -118,7 +118,6 @@ export default function RequestPartFlowMinimal({ navigation }: any) {
   };
 
   const confirmAllPhotos = () => {
-    console.log('All photos confirmed:', capturedImages);
     setCurrentStep('preview');
   };
 
@@ -131,16 +130,15 @@ export default function RequestPartFlowMinimal({ navigation }: any) {
   };
 
   const submitRequest = () => {
-    console.log('Request submitted:', {
-      photos: capturedImages,
-      make: selectedMake,
-      model: selectedModel,
-      year: selectedYear,
-      vinNumber: vinNumber,
-      engineNumber: engineNumber,
-      categories: selectedCategories,
-    });
-    // TODO: Send to backend
+    // TODO: Implement backend API call
+    // POST to /api/requests with:
+    // - mechanicId
+    // - make, model, year
+    // - vinNumber, engineNumber
+    // - categories
+    // - images (base64)
+    
+    // For now, just navigate back
     navigation.goBack();
   };
 
