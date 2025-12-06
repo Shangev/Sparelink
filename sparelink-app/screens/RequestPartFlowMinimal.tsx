@@ -138,8 +138,9 @@ export default function RequestPartFlowMinimal({ navigation }: any) {
     // - categories
     // - images (base64)
     
-    // For now, just navigate back
-    navigation.goBack();
+    // For now, navigate to Chats screen to show the 5 conversations
+    // In production, this should happen after successful API call
+    navigation.navigate('Chats', { userId: 'test-user-id' });
   };
 
   if (!permission) {
