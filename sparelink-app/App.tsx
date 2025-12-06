@@ -251,11 +251,18 @@ const styles = StyleSheet.create({
 
 // Main App Component with Navigation
 export default function App() {
-  const [currentScreen, setCurrentScreen] = React.useState('Home');
-
-  if (currentScreen === 'RequestPartFlow') {
-    return <RequestPartFlowExpo navigation={{ goBack: () => setCurrentScreen('Home') }} />;
-  }
-
-  return <HomeScreen navigation={{ navigate: (screen: string) => setCurrentScreen(screen) }} />;
+  return (
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          cardStyle: { backgroundColor: '#000' },
+        }}
+      >
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="RequestPartFlow" component={RequestPartFlowExpo} />
+        <Stack.Screen name="Chats" component={ChatsScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
 }
