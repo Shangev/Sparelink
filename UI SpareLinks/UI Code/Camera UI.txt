@@ -1,0 +1,176 @@
+// screens/CameraScreen.tsx
+import React, { useRef, useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  Dimensions,
+} from 'react-native';
+import { Camera, useCameraDevices } from 'react-native-vision-camera';
+import {
+  X,
+  Flash,
+  Timer,
+  Image as GalleryIcon,
+  RotateCw,
+  Settings,
+  Square,
+} from 'lucide-react-native';
+
+const { width } = Dimensions.get('window');
+const SHUTTER_SIZE = 80;
+const INNER_SIZE = 70;
+
+export default function CameraScreen({ navigation }: any) {
+  const devices = useCameraDevices();
+  const device = devices.back;
+  const camera = useRef<Camera>(null);
+  const [flashOn, setFlashOn] = useState(false);
+
+  const takePhoto = async () => {
+    if (camera.current) {
+      const photo = await camera.current.takePhoto({ flash: flashOn ? 'on' : 'off' });
+      navigation.navigate('PartDetails', { photoUri: `file://${photo.path}` });
+    }
+  };
+
+  if (!device) return null;
+
+  return (
+    <View style={styles.container}>
+      <Camera
+        ref={camera}
+        style={StyleSheet.absoluteFill}
+        device={device}
+        isActive={true}
+        photo={true}
+        torch={flashOn ? 'on' : 'off'}
+      />
+
+      {/* Top Left: Close */}
+      <TouchableOpacity style={styles.closeButton} onPress={() => navigation.goBack()}>
+        <X size={32} color="#fff" />
+      </TouchableOpacity>
+
+      {/* Top Right: Flash */}
+      <TouchableOpacity style={styles.flashButton} onPress={() => setFlashOn(!flashOn)}>
+        <Flash size={32} color={flashOn ? '#FFD700' : '#fff'} />
+      </TouchableOpacity>
+
+      {/* Right Vertical Toolbar */}
+      <View style={styles.rightToolbar}>
+        <TouchableOpacity style={styles.toolButton}>
+          <Square size={28} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.toolButton}>
+          <Timer size={28} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.toolButton}>
+          <GalleryIcon size={28} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.toolButton}>
+          <RotateCw size={28} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.toolButton}>
+          <Settings size={28} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Bottom Center: Shutter + 50cm/10cm Guide */}
+      <View style={styles.bottomCenter}>
+        <Text style={styles.guideTextTop}>50 cm</Text>
+        <View style={styles.shutterContainer}>
+          <View style={styles.outerRing} />
+          <TouchableOpacity style={styles.shutterButton} onPress={takePhoto}>
+            <View style={styles.innerCircle} />
+          </TouchableOpacity>
+          <Text style={styles.guideTextBottom}>10 cm</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: 12,
+    borderRadius: 30,
+  },
+  flashButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: 12,
+    borderRadius: 30,
+  },
+  rightToolbar: {
+    position: 'absolute',
+    right: 16,
+    top: 120,
+    gap: 24,
+    zIndex: 10,
+  },
+  toolButton: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: 14,
+    borderRadius: 30,
+  },
+  bottomCenter: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  guideTextTop: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  shutterContainer: {
+    alignItems: 'center',
+  },
+  outerRing: {
+    position: 'absolute',
+    width: SHUTTER_SIZE + 20,
+    height: SHUTTER_SIZE + 20,
+    borderRadius: (SHUTTER_SIZE + 20) / 2,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  shutterButton: {
+    width: SHUTTER_SIZE,
+    height: SHUTTER_SIZE,
+    borderRadius: SHUTTER_SIZE / 2,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 6,
+    borderColor: 'rgba(0,0,0,0.3)',
+  },
+  innerCircle: {
+    width: INNER_SIZE,
+    height: INNER_SIZE,
+    borderRadius: INNER_SIZE / 2,
+    backgroundColor: '#fff',
+  },
+  guideTextBottom: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+});
