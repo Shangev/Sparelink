@@ -13,7 +13,7 @@ import { ClipboardList, MessageCircle, Truck, Bell, Home, User } from 'lucide-re
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import RequestPartFlowExpo from './screens/RequestPartFlowMinimal';
+import RequestPartFlowExpo from './screens/RequestPartFlowFixed';
 import ChatsScreen from './screens/ChatsScreen';
 
 const Stack = createStackNavigator();
@@ -111,6 +111,7 @@ function HomeScreen({ navigation }: any) {
               source={require('./assets/images/nav-request-icon.png')} 
               style={styles.navIconImage}
               resizeMode="contain"
+              tintColor="#888"
             />
             <Text style={styles.navLabel}>My Requests</Text>
           </TouchableOpacity>
@@ -166,7 +167,6 @@ const styles = StyleSheet.create({
   navIconImage: {
     width: 24,
     height: 24,
-    tintColor: '#888',
   },
   hero: {
     marginTop: 40,

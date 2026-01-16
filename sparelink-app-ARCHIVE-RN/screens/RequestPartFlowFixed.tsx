@@ -6,8 +6,9 @@ import {
   StyleSheet,
   Image,
   SafeAreaView,
+  Platform,
 } from 'react-native';
-import { CameraView, useCameraPermissions, CameraType, FlashMode } from 'expo-camera';
+import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Zap, ZapOff, RotateCw, ZoomIn, ZoomOut, Grid3x3, Image as ImageIcon, X as XIcon, Check, Car, Calendar, Send, Hash } from 'lucide-react-native';
 import { ScrollView, Dimensions, TextInput } from 'react-native';
@@ -24,10 +25,16 @@ export default function RequestPartFlowMinimal({ navigation }: any) {
   
   // Camera controls
   const [facing, setFacing] = useState<CameraType>('back');
-  const [flash, setFlash] = useState<FlashMode>('off');
+  const [flash, setFlash] = useState<'off' | 'on'>('off');
   const [zoom, setZoom] = useState(0);
   const [showGrid, setShowGrid] = useState(false);
   const [multiPhotoMode, setMultiPhotoMode] = useState(true); // Enable multi-photo by default
+  
+  // DEBUG: Log to verify new code is loaded
+  useEffect(() => {
+    console.log('✅ RequestPartFlowMinimal v2.0 - FIXED VERSION LOADED');
+    console.log('Flash state type:', typeof flash, flash);
+  }, []);
   
   // Vehicle details state
   const [selectedMake, setSelectedMake] = useState('');
@@ -101,7 +108,7 @@ export default function RequestPartFlowMinimal({ navigation }: any) {
 
   const pickFromGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: false,
       quality: 1,
       allowsMultipleSelection: true,
@@ -160,19 +167,46 @@ export default function RequestPartFlowMinimal({ navigation }: any) {
 
   // CAMERA VIEW - ENHANCED VERSION
   if (currentStep === 'camera') {
+    // On web, skip camera and go directly to gallery picker
+    if (Platform.OS === 'web') {
+      return (
+        <View style={styles.container}>
+          <View style={styles.webCameraPlaceholder}>
+            <Text style={styles.webCameraText}>Camera not available on web</Text>
+            <Text style={styles.webCameraSubtext}>Use the gallery button to upload photos</Text>
+            <TouchableOpacity style={styles.webGalleryButton} onPress={pickFromGallery}>
+              <ImageIcon size={32} color="#fff" />
+              <Text style={styles.webGalleryButtonText}>Pick from Gallery</Text>
+            </TouchableOpacity>
+            {capturedImages.length > 0 && (
+              <TouchableOpacity style={styles.webConfirmButton} onPress={confirmAllPhotos}>
+                <Check size={24} color="#000" />
+                <Text style={styles.webConfirmButtonText}>Continue with {capturedImages.length} photo{capturedImages.length !== 1 ? 's' : ''}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <SafeAreaView style={styles.topBar}>
+            <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.iconButton}>
+              <ChevronLeft size={28} color="#fff" />
+            </TouchableOpacity>
+          </SafeAreaView>
+        </View>
+      );
+    }
+    
     return (
       <View style={styles.container}>
         <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           facing={facing}
-          flash={flash}
+          enableTorch={flash === 'on'}
           zoom={zoom}
         />
         
         {/* Top Bar */}
           <SafeAreaView style={styles.topBar}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+            <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.iconButton}>
               <ChevronLeft size={28} color="#fff" />
             </TouchableOpacity>
             
@@ -839,15 +873,73 @@ const styles = StyleSheet.create({
     marginTop: 40,
     marginHorizontal: 20,
     gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    ...Platform.select({
+      web: {
+        boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.3)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+      },
+    }),
   },
   sendRequestButtonText: {
     color: '#000',
     fontSize: 18,
+    fontWeight: '700',
+  },
+  // Web-specific styles
+  webCameraPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    gap: 20,
+  },
+  webCameraText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  webCameraSubtext: {
+    color: '#aaa',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  webGalleryButton: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 2,
+    borderColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 20,
+  },
+  webGalleryButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  webConfirmButton: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 20,
+  },
+  webConfirmButtonText: {
+    color: '#000',
+    fontSize: 16,
     fontWeight: '700',
   },
 });

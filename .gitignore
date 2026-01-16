@@ -1,0 +1,31 @@
+# Node modules
+node_modules/
+**/node_modules/
+
+# Build outputs
+.next/
+**/.next/
+build/
+dist/
+
+# Flutter build artifacts
+**/android/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+
+# Environment files with secrets (keep .env.local for reference)
+# .env.local
+
+# Temporary files
+tmp_rovodev_*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
