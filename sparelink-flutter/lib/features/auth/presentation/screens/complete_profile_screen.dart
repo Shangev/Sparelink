@@ -6,19 +6,24 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/constants/environment_config.dart';
 import '../../../../shared/services/supabase_service.dart';
 import '../../../../shared/services/storage_service.dart';
+import '../../../../shared/services/photon_places_service.dart';
+import '../../../../shared/widgets/address_autocomplete.dart';
 
-/// Complete Profile Screen - Shown after phone verification
+/// Complete Profile Screen - Shown after phone/email verification
 /// User fills in: Name, Role (Mechanic/Shop), Workshop Name (if shop)
 class CompleteProfileScreen extends ConsumerStatefulWidget {
   final String phone;
   final String userId;
+  final String? email;
   
   const CompleteProfileScreen({
     super.key,
     required this.phone,
     required this.userId,
+    this.email,
   });
 
   @override
@@ -33,6 +38,12 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   String _selectedRole = 'mechanic';
   bool _isLoading = false;
   
+  // Address data from Google Places (locked after selection)
+  PlaceDetails? _selectedPlace;
+  String? _suburb;
+  String? _city;
+  bool _addressVerified = false;
+  
   @override
   void dispose() {
     _nameController.dispose();
@@ -40,9 +51,18 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     super.dispose();
   }
   
+  void _onPlaceSelected(PlaceDetails details) {
+    setState(() {
+      _selectedPlace = details;
+      _suburb = details.suburb;
+      _city = details.city;
+      _addressVerified = details.suburb != null || details.city != null;
+    });
+  }
+  
   /// Redirect shop owners to the Shop Dashboard
   Future<void> _redirectToShopDashboard(String? accessToken) async {
-    const shopDashboardUrl = 'http://localhost:3000';
+    const shopDashboardUrl = EnvironmentConfig.shopDashboardUrl;
     
     if (kIsWeb) {
       final uri = Uri.parse('$shopDashboardUrl/dashboard?token=$accessToken');
@@ -87,7 +107,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
             Text('• Set working hours and shop settings', style: TextStyle(color: AppTheme.lightGray, fontSize: 13)),
             SizedBox(height: 16),
             Text(
-              'Dashboard: http://localhost:3000',
+              'Dashboard: ${EnvironmentConfig.shopDashboardUrl}',
               style: TextStyle(color: AppTheme.accentGreen, fontWeight: FontWeight.w600),
             ),
           ],
@@ -108,13 +128,24 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   Future<void> _handleCompleteProfile() async {
     if (!_formKey.currentState!.validate()) return;
     
+    // Validate address is selected
+    if (!_addressVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select your address to continue'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
     setState(() => _isLoading = true);
     
     try {
       final supabaseService = ref.read(supabaseServiceProvider);
       final storageService = ref.read(storageServiceProvider);
       
-      // Update the profile in Supabase
+      // Update the profile in Supabase with verified suburb/city
       await Supabase.instance.client
           .from('profiles')
           .upsert({
@@ -122,9 +153,12 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
             'full_name': _nameController.text.trim(),
             'phone': widget.phone,
             'role': _selectedRole,
+            'suburb': _suburb,  // Locked from Google Places
+            'city': _city,      // Locked from Google Places
+            'address': _selectedPlace?.formattedAddress,
           });
       
-      // If registering as shop, create shop entry
+      // If registering as shop, create shop entry with verified location
       if (_selectedRole == 'shop' && _workshopController.text.isNotEmpty) {
         await Supabase.instance.client
             .from('shops')
@@ -132,6 +166,9 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
               'owner_id': widget.userId,
               'name': _workshopController.text.trim(),
               'phone': widget.phone,
+              'suburb': _suburb,  // Locked from Google Places
+              'city': _city,      // Locked from Google Places
+              'address': _selectedPlace?.formattedAddress,
             });
       }
       
@@ -338,6 +375,24 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                                 },
                               ),
                             ],
+                            
+                            const SizedBox(height: 24),
+                            
+                            // Address Autocomplete with Google Places
+                            AddressAutocomplete(
+                              label: 'Your Location *',
+                              hint: 'Search for your address...',
+                              onPlaceSelected: _onPlaceSelected,
+                            ),
+                            
+                            const SizedBox(height: 16),
+                            
+                            // Display extracted suburb/city (locked)
+                            ExtractedLocationDisplay(
+                              suburb: _suburb,
+                              city: _city,
+                              isVerified: _addressVerified,
+                            ),
                             
                             const SizedBox(height: 32),
                             

@@ -41,9 +41,28 @@ dependencies:
   flutter_animate: ^4.5.0
   google_fonts: ^6.1.0
 
+  # HTTP client for Photon API (OpenStreetMap address search)
+  http: ^1.1.0
+
   # Utilities
   intl: ^0.18.1
   uuid: ^4.2.2
+
+  # Biometric Authentication
+  local_auth: ^2.1.6
+
+  # File Picker
+  file_picker: ^6.1.1
+
+  # Voice Recording & Audio
+  record: ^5.0.4
+  audioplayers: ^5.2.1
+  path_provider: ^2.1.1
+
+  # Push Notifications (commented out until Firebase project is configured)
+  # Uncomment and run 'flutterfire configure' after setting up Firebase project
+  # firebase_core: ^3.8.1
+  # firebase_messaging: ^15.1.6
 
 dev_dependencies:
   flutter_test:

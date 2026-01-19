@@ -6,6 +6,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/services/storage_service.dart';
+import '../../../shared/services/photon_places_service.dart';
+import '../../../shared/widgets/address_autocomplete.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -27,6 +29,25 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   String? _userPhone;
   String? _userRole;
   String? _userId;
+  
+  // Google Places verified address data
+  PlaceDetails? _selectedPlace;
+  bool _addressVerified = false;
+  String? _fullAddress;
+  
+  void _onPlaceSelected(PlaceDetails details) {
+    setState(() {
+      _selectedPlace = details;
+      _fullAddress = details.formattedAddress;
+      // Auto-populate fields from Google Places (locked data)
+      _streetAddressController.text = details.streetAddress;
+      _suburbController.text = details.suburb ?? '';
+      _cityController.text = details.city ?? '';
+      _postalCodeController.text = details.postalCode ?? '';
+      _provinceController.text = details.province ?? '';
+      _addressVerified = details.suburb != null || details.city != null;
+    });
+  }
 
   @override
   void initState() {
@@ -356,16 +377,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                               fontSize: 14,
                                             ),
                                           ),
-                                          const Spacer(),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.orange.withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: const Text(
-                                              'Contact support to change',
-                                              style: TextStyle(color: Colors.orange, fontSize: 10),
+                                          const SizedBox(width: 8),
+                                          Flexible(
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.orange.withValues(alpha: 0.2),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: const Text(
+                                                'Contact support to change',
+                                                style: TextStyle(color: Colors.orange, fontSize: 10),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -417,7 +441,29 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                 
                                 const SizedBox(height: 16),
                                 
-                                // Street Address
+                                // Google Places Address Search
+                                _buildGlassCard(
+                                  child: AddressAutocomplete(
+                                    label: 'Search Your Address',
+                                    hint: 'Start typing your address...',
+                                    initialAddress: _fullAddress,
+                                    onPlaceSelected: _onPlaceSelected,
+                                  ),
+                                ),
+                                
+                                // Verified Location Display
+                                if (_addressVerified) ...[
+                                  const SizedBox(height: 16),
+                                  ExtractedLocationDisplay(
+                                    suburb: _suburbController.text,
+                                    city: _cityController.text,
+                                    isVerified: true,
+                                  ),
+                                ],
+                                
+                                const SizedBox(height: 16),
+                                
+                                // Street Address (editable but pre-filled from Google)
                                 _buildGlassCard(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,10 +478,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                         style: const TextStyle(color: Colors.white, fontSize: 16),
                                         decoration: InputDecoration(
                                           hintText: 'e.g. 123 Main Road',
-                                          hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                                           prefixIcon: const Icon(LucideIcons.building, color: AppTheme.accentGreen),
                                           filled: true,
-                                          fillColor: Colors.white.withOpacity(0.05),
+                                          fillColor: Colors.white.withValues(alpha: 0.05),
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(12),
                                             borderSide: BorderSide.none,
@@ -452,7 +498,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                 
                                 const SizedBox(height: 16),
                                 
-                                // Suburb (Important for matching)
+                                // Suburb (LOCKED - from Google Places)
                                 _buildGlassCard(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,12 +513,21 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                             decoration: BoxDecoration(
-                                              color: AppTheme.accentGreen.withOpacity(0.2),
+                                              color: AppTheme.accentGreen.withValues(alpha: 0.2),
                                               borderRadius: BorderRadius.circular(6),
                                             ),
-                                            child: const Text(
-                                              'Used for matching',
-                                              style: TextStyle(color: AppTheme.accentGreen, fontSize: 10),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                if (_addressVerified)
+                                                  const Icon(LucideIcons.lock, color: AppTheme.accentGreen, size: 10),
+                                                if (_addressVerified)
+                                                  const SizedBox(width: 4),
+                                                Text(
+                                                  _addressVerified ? 'Verified' : 'Used for matching',
+                                                  style: const TextStyle(color: AppTheme.accentGreen, fontSize: 10),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                         ],
@@ -480,13 +535,23 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                       const SizedBox(height: 8),
                                       TextFormField(
                                         controller: _suburbController,
-                                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                                        readOnly: _addressVerified, // Lock if verified
+                                        style: TextStyle(
+                                          color: _addressVerified ? Colors.grey[400] : Colors.white,
+                                          fontSize: 16,
+                                        ),
                                         decoration: InputDecoration(
-                                          hintText: 'e.g. Sandton, Rosebank',
-                                          hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                                          prefixIcon: const Icon(LucideIcons.mapPin, color: AppTheme.accentGreen),
+                                          hintText: 'Select address above to auto-fill',
+                                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                                          prefixIcon: Icon(
+                                            _addressVerified ? LucideIcons.shieldCheck : LucideIcons.mapPin,
+                                            color: AppTheme.accentGreen,
+                                          ),
+                                          suffixIcon: _addressVerified
+                                              ? const Icon(LucideIcons.lock, color: Colors.grey, size: 16)
+                                              : null,
                                           filled: true,
-                                          fillColor: Colors.white.withOpacity(0.05),
+                                          fillColor: Colors.white.withValues(alpha: 0.05),
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(12),
                                             borderSide: BorderSide.none,
@@ -498,7 +563,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                         ),
                                         validator: (value) {
                                           if (value == null || value.trim().isEmpty) {
-                                            return 'Please enter your suburb for shop matching';
+                                            return 'Please select your address to fill suburb';
                                           }
                                           return null;
                                         },
@@ -518,19 +583,31 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            const Text(
-                                              'City',
-                                              style: TextStyle(color: Colors.grey, fontSize: 14),
+                                            Row(
+                                              children: [
+                                                const Text(
+                                                  'City',
+                                                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                                                ),
+                                                if (_addressVerified) ...[
+                                                  const SizedBox(width: 6),
+                                                  const Icon(LucideIcons.lock, color: Colors.grey, size: 12),
+                                                ],
+                                              ],
                                             ),
                                             const SizedBox(height: 8),
                                             TextFormField(
                                               controller: _cityController,
-                                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                                              readOnly: _addressVerified, // Lock if verified
+                                              style: TextStyle(
+                                                color: _addressVerified ? Colors.grey[400] : Colors.white,
+                                                fontSize: 16,
+                                              ),
                                               decoration: InputDecoration(
                                                 hintText: 'e.g. Johannesburg',
-                                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                                                 filled: true,
-                                                fillColor: Colors.white.withOpacity(0.05),
+                                                fillColor: Colors.white.withValues(alpha: 0.05),
                                                 border: OutlineInputBorder(
                                                   borderRadius: BorderRadius.circular(12),
                                                   borderSide: BorderSide.none,

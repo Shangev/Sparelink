@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/services/storage_service.dart';
@@ -28,6 +29,9 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   bool _isLoading = true;
   String? _error;
   String? _currentUserId;
+  
+  // Real-time subscription for instant badge updates
+  RealtimeChannel? _messageSubscription;
 
   // Avatar colors for visual variety
   final List<Color> _avatarColors = [
@@ -47,6 +51,40 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   void initState() {
     super.initState();
     _loadConversations();
+    _subscribeToMessageUpdates();
+  }
+  
+  /// REAL-TIME LISTENER: Subscribe to message changes for instant badge updates
+  /// This triggers UI rebuild immediately when messages are marked as read
+  void _subscribeToMessageUpdates() {
+    _messageSubscription = Supabase.instance.client
+        .channel('chats_screen_messages')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'request_chat_messages',
+          callback: (payload) {
+            debugPrint('📨 [ChatsScreen] Real-time message update received');
+            // Refresh chat list when any message changes (new message, read status change)
+            if (mounted) {
+              _loadConversations();
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            debugPrint('📨 [ChatsScreen] Real-time message update (messages table)');
+            if (mounted) {
+              _loadConversations();
+            }
+          },
+        )
+        .subscribe();
+    
+    debugPrint('✅ [ChatsScreen] Subscribed to real-time message updates');
   }
 
   Future<void> _loadConversations() async {
@@ -78,8 +116,43 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
       // Combine both - request_chats take priority
       final allChats = <Map<String, dynamic>>[];
       
-      // Add request_chats first (primary source)
+      // Add request_chats first (primary source) with last message
       for (final chat in requestChats) {
+        // Fetch the last message for this chat (including sender info for ticks)
+        String? lastMessageText;
+        String? lastMessageAt;
+        bool lastMessageIsMine = false;
+        bool lastMessageIsRead = false;
+        
+        try {
+          final requestId = chat['request_id'] ?? chat['part_requests']?['id'];
+          final shopId = chat['shop_id'] ?? chat['shops']?['id'];
+          
+          if (requestId != null && shopId != null) {
+            final lastMsg = await supabaseService.getLastMessageForChat(requestId, shopId);
+            if (lastMsg != null) {
+              lastMessageText = lastMsg['text'] as String?;
+              lastMessageAt = lastMsg['sent_at'] as String?;
+              lastMessageIsMine = lastMsg['sender_id'] == _currentUserId;
+              lastMessageIsRead = lastMsg['is_read'] as bool? ?? false;
+            }
+          }
+        } catch (e) {
+          debugPrint('Error fetching last message: $e');
+        }
+        
+        // Fetch unread message count
+        int unreadCount = 0;
+        try {
+          unreadCount = await supabaseService.getUnreadCountForChat(
+            chat['request_id'] ?? chat['part_requests']?['id'], 
+            chat['shop_id'] ?? chat['shops']?['id'],
+            _currentUserId!,
+          );
+        } catch (e) {
+          debugPrint('Error fetching unread count: $e');
+        }
+        
         allChats.add({
           'id': chat['id'],
           'type': 'request_chat',
@@ -90,7 +163,13 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           'delivery_fee': chat['delivery_fee'],
           'created_at': chat['created_at'],
           'updated_at': chat['updated_at'],
-          'messages': [], // Will load on demand
+          'last_message_text': lastMessageText,
+          'last_message_at': lastMessageAt,
+          'last_message_is_mine': lastMessageIsMine,
+          'last_message_is_read': lastMessageIsRead,
+          'request_id': chat['request_id'],
+          'shop_id': chat['shop_id'],
+          'unread_count': unreadCount,
         });
       }
       
@@ -108,8 +187,43 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
         }
       }
       
+      // 24-HOUR TTL FILTER: Remove chats with no activity in last 24 hours
+      // Only applies to completed/rejected chats - pending and quoted chats stay visible
+      final ttlCutoff = DateTime.now().subtract(const Duration(hours: 24));
+      final filteredChats = allChats.where((chat) {
+        final status = chat['status'] as String?;
+        
+        // Always show pending and quoted chats
+        if (status == 'pending' || status == 'quoted' || status == null) {
+          return true;
+        }
+        
+        // For completed/rejected/accepted - check last activity time
+        final lastActivityStr = chat['last_message_at'] ?? chat['updated_at'] ?? chat['created_at'];
+        if (lastActivityStr == null) return true;
+        
+        try {
+          final lastActivity = DateTime.parse(lastActivityStr as String);
+          return lastActivity.isAfter(ttlCutoff);
+        } catch (e) {
+          return true; // Keep if date parsing fails
+        }
+      }).toList();
+      
+      // Sort chats by last_message_at (newest first), falling back to updated_at
+      filteredChats.sort((a, b) {
+        final aTime = a['last_message_at'] ?? a['updated_at'] ?? a['created_at'];
+        final bTime = b['last_message_at'] ?? b['updated_at'] ?? b['created_at'];
+        
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        
+        return DateTime.parse(bTime as String).compareTo(DateTime.parse(aTime as String));
+      });
+      
       setState(() {
-        _chats = allChats;
+        _chats = filteredChats;
         _isLoading = false;
       });
     } catch (e) {
@@ -124,9 +238,107 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   Color _getAvatarColor(int index) {
     return _avatarColors[index % _avatarColors.length];
   }
+  
+  /// CRITICAL FIX: Mark all messages as read IMMEDIATELY when chat tile is tapped
+  /// This clears the unread badge before navigating to the chat
+  /// 
+  /// ROOT CAUSE FIX: Chats use 'request_chat_messages' table (NOT 'messages' table)
+  /// The getUnreadCountForChat now queries request_chat_messages, so we must update that same table
+  Future<void> _markChatAsRead(Map<String, dynamic> chat) async {
+    if (_currentUserId == null) return;
+    
+    final requestId = chat['request_id'] ?? chat['part_requests']?['id'];
+    final shopId = chat['shop_id'] ?? chat['shops']?['id'];
+    
+    if (requestId == null || shopId == null) {
+      debugPrint('⚠️ [ChatsScreen] Cannot mark as read - missing requestId or shopId');
+      return;
+    }
+    
+    try {
+      debugPrint('📖 [ChatsScreen] Marking messages as read for request: $requestId, shop: $shopId');
+      
+      // DIRECT UPDATE to request_chat_messages table
+      // This is the SAME table that getUnreadCountForChat queries!
+      final result = await Supabase.instance.client
+          .from('request_chat_messages')
+          .update({
+            'is_read': true,
+            'read_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('request_id', requestId)
+          .eq('shop_id', shopId)
+          .neq('sender_id', _currentUserId!)
+          .eq('is_read', false)
+          .select('id');
+      
+      final updatedCount = (result as List).length;
+      debugPrint('✅ [ChatsScreen] Marked $updatedCount messages as read in request_chat_messages table');
+      
+      // IMMEDIATELY update local state to clear badge (no wait for next DB query)
+      if (mounted) {
+        setState(() {
+          final chatIndex = _chats.indexWhere((c) => 
+            c['request_id'] == requestId && (c['shop_id'] ?? c['shops']?['id']) == shopId);
+          if (chatIndex != -1) {
+            _chats[chatIndex]['unread_count'] = 0;
+            debugPrint('✅ [ChatsScreen] Local state updated - badge cleared');
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ [ChatsScreen] Failed to mark messages as read: $e');
+      
+      // Fallback: Try the old conversations+messages tables
+      try {
+        final conversationResult = await Supabase.instance.client
+            .from('conversations')
+            .select('id')
+            .eq('request_id', requestId)
+            .eq('shop_id', shopId)
+            .maybeSingle();
+        
+        if (conversationResult != null) {
+          await Supabase.instance.client
+              .from('messages')
+              .update({
+                'is_read': true,
+                'read_at': DateTime.now().toUtc().toIso8601String(),
+              })
+              .eq('conversation_id', conversationResult['id'])
+              .neq('sender_id', _currentUserId!)
+              .eq('is_read', false);
+          debugPrint('✅ [ChatsScreen] Fallback: Marked messages as read via conversations table');
+        }
+        
+        // Update local state
+        if (mounted) {
+          setState(() {
+            final chatIndex = _chats.indexWhere((c) => 
+              c['request_id'] == requestId && (c['shop_id'] ?? c['shops']?['id']) == shopId);
+            if (chatIndex != -1) {
+              _chats[chatIndex]['unread_count'] = 0;
+            }
+          });
+        }
+      } catch (e2) {
+        debugPrint('⚠️ [ChatsScreen] Fallback also failed: $e2');
+      }
+    }
+  }
 
   String _getLastMessage(Map<String, dynamic> chat) {
-    // For request_chats, show status-based preview
+    // First check for actual last message text
+    final lastMessageText = chat['last_message_text'] as String?;
+    if (lastMessageText != null && lastMessageText.isNotEmpty) {
+      // Truncate long messages
+      if (lastMessageText.length > 40) {
+        return '${lastMessageText.substring(0, 40)}...';
+      }
+      return lastMessageText;
+    }
+    
+    // Fall back to status-based preview for request_chats
     if (chat['type'] == 'request_chat') {
       final status = chat['status'] as String?;
       final quoteAmount = chat['quote_amount'];
@@ -139,7 +351,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
       } else if (status == 'rejected') {
         return 'Quote declined';
       } else {
-        return 'Awaiting quote...';
+        return 'No messages yet';
       }
     }
     
@@ -172,6 +384,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _messageSubscription?.unsubscribe();
     super.dispose();
   }
 
@@ -349,23 +562,50 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           final shopName = _getShopName(chat);
           final lastMessage = _getLastMessage(chat);
           
+          final unreadCount = chat['unread_count'] as int? ?? 0;
+          
           return _ChatCard(
             chat: {
               'id': chat['id'],
               'name': shopName,
-              'status': 'Online',
               'preview': lastMessage,
               'avatarColor': _getAvatarColor(index),
-              'conversation': chat, // Pass full conversation data
+              'conversation': chat,
+              'unread_count': unreadCount,
+              'last_message_at': chat['last_message_at'],
+              'last_message_is_mine': chat['last_message_is_mine'] ?? false,
+              'last_message_is_read': chat['last_message_is_read'] ?? false,
             },
-            onTap: () {
-              context.push('/chat/${chat['id']}', extra: {
-                'id': chat['id'],
-                'name': shopName,
-                'status': 'Online',
-                'avatarColor': _getAvatarColor(index),
-                'conversation': chat,
-              });
+            onTap: () async {
+              // CRITICAL: Mark messages as read IMMEDIATELY on tap (before navigation)
+              // This clears the unread badge instantly
+              await _markChatAsRead(chat);
+              
+              // Navigate to chat screen - pass FULL chat data including conversation info
+              if (mounted) {
+                debugPrint('🚀 [ChatsScreen] Navigating to chat with data: ${chat.keys.toList()}');
+                await context.push('/chat/${chat['id']}', extra: {
+                  'id': chat['id'],
+                  'name': shopName,
+                  'avatarColor': _getAvatarColor(index),
+                  'conversation': chat,
+                  // Pass these explicitly so IndividualChatScreen can find/create conversation
+                  'type': chat['type'],
+                  'request_id': chat['request_id'],
+                  'shop_id': chat['shop_id'] ?? chat['shops']?['id'],
+                  'shops': chat['shops'],
+                  'part_requests': chat['part_requests'],
+                  'status': chat['status'],
+                  'quote_amount': chat['quote_amount'],
+                  'delivery_fee': chat['delivery_fee'],
+                });
+                
+                // CACHE INVALIDATION: Force refresh when returning from chat
+                // This ensures any new messages or state changes are reflected
+                if (mounted) {
+                  _loadConversations();
+                }
+              }
             },
           );
         },
@@ -447,84 +687,195 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   }
 }
 
-/// Chat Card Widget - matches reference design exactly
+/// Chat Card Widget - WhatsApp-style design
+/// Layout: [Avatar] [Name + Message Preview] [Timestamp + Status Ticks]
 class _ChatCard extends StatelessWidget {
   final Map<String, dynamic> chat;
   final VoidCallback onTap;
 
   static const Color _cardBackground = Color(0xFF1E1E1E);
   static const Color _subtitleGray = Color(0xFFB0B0B0);
+  static const Color _tickGray = Color(0xFF8E8E8E);
+  static const Color _tickBlue = Color(0xFF53BDEB);
 
   const _ChatCard({
     required this.chat,
     required this.onTap,
   });
 
+  String _formatTimestamp(String? timestamp) {
+    if (timestamp == null) return '';
+    try {
+      final utcDate = DateTime.parse(timestamp);
+      final localDate = utcDate.toLocal();
+      final now = DateTime.now();
+      final isToday = localDate.year == now.year && 
+                      localDate.month == now.month && 
+                      localDate.day == now.day;
+      final isYesterday = localDate.year == now.year && 
+                          localDate.month == now.month && 
+                          localDate.day == now.day - 1;
+      
+      if (isToday) {
+        return '${localDate.hour.toString().padLeft(2, '0')}:${localDate.minute.toString().padLeft(2, '0')}';
+      } else if (isYesterday) {
+        return 'Yesterday';
+      } else {
+        return '${localDate.day}/${localDate.month}/${localDate.year.toString().substring(2)}';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /// Build message status ticks (WhatsApp style)
+  /// - Single grey tick: Sent (message exists)
+  /// - Double grey tick: Delivered (is_read = false)
+  /// - Double blue tick: Seen (is_read = true)
+  Widget _buildStatusTicks() {
+    final isFromCurrentUser = chat['last_message_is_mine'] as bool? ?? false;
+    final isRead = chat['last_message_is_read'] as bool? ?? false;
+    
+    // Only show ticks for messages sent by current user
+    if (!isFromCurrentUser) {
+      return const SizedBox.shrink();
+    }
+    
+    if (isRead) {
+      // Double blue ticks - Seen
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(LucideIcons.checkCheck, size: 16, color: _tickBlue),
+        ],
+      );
+    } else {
+      // Double grey ticks - Delivered/Received
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(LucideIcons.checkCheck, size: 16, color: _tickGray),
+        ],
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final unreadCount = chat['unread_count'] as int? ?? 0;
+    final hasUnread = unreadCount > 0;
+    final timestamp = chat['last_message_at'] as String?;
+    final preview = chat['preview'] as String? ?? 'No messages yet';
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
           color: _cardBackground,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            // Avatar
+            // Far Left: Avatar
             CircleAvatar(
-              radius: 30,
+              radius: 28,
               backgroundColor: chat['avatarColor'] as Color,
               child: Text(
-                (chat['name'] as String).split(' ').last[0].toUpperCase(),
+                (chat['name'] as String).isNotEmpty 
+                    ? (chat['name'] as String).split(' ').last[0].toUpperCase()
+                    : '?',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 14),
             
-            // Name and status
+            // Middle: Name (top) + Message Preview (bottom)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // Name
                   Text(
                     chat['name'] as String,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  if ((chat['status'] as String).isNotEmpty)
-                    Text(
-                      chat['status'] as String,
-                      style: const TextStyle(
-                        color: _subtitleGray,
-                        fontSize: 14,
+                  const SizedBox(height: 4),
+                  // Message preview with status tick
+                  Row(
+                    children: [
+                      // Status ticks for own messages
+                      _buildStatusTicks(),
+                      if (chat['last_message_is_mine'] == true)
+                        const SizedBox(width: 4),
+                      // Preview text
+                      Expanded(
+                        child: Text(
+                          preview,
+                          style: TextStyle(
+                            color: hasUnread ? Colors.white : _subtitleGray,
+                            fontSize: 14,
+                            fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
+                    ],
+                  ),
                 ],
               ),
             ),
             
-            // Message preview
-            Expanded(
-              child: Text(
-                chat['preview'] as String,
-                style: const TextStyle(
-                  color: _subtitleGray,
-                  fontSize: 14,
+            const SizedBox(width: 10),
+            
+            // Far Right: Timestamp (top) + Unread Badge (bottom)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Timestamp
+                Text(
+                  _formatTimestamp(timestamp),
+                  style: TextStyle(
+                    color: hasUnread ? Colors.green : _subtitleGray,
+                    fontSize: 12,
+                    fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
+                  ),
                 ),
-                textAlign: TextAlign.right,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+                const SizedBox(height: 6),
+                // Unread badge or empty space
+                if (hasUnread)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      unreadCount > 99 ? '99+' : '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(height: 20), // Maintain spacing when no badge
+              ],
             ),
           ],
         ),

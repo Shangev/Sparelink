@@ -45,13 +45,19 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
     super.dispose();
   }
 
+  String? _conversationId;  // Store conversation ID for messaging
+  
   Future<void> _loadChatData() async {
     setState(() => _isLoading = true);
+    debugPrint('🔄 [RequestChatScreen] Loading chat data for chatId: ${widget.chatId}');
+    
     try {
       final storageService = ref.read(storageServiceProvider);
       _currentUserId = await storageService.getUserId();
       final userRole = await storageService.getUserRole();
       _isMechanic = userRole == 'mechanic';
+      
+      debugPrint('👤 [RequestChatScreen] User ID: $_currentUserId, Role: $userRole');
       
       // Load chat with shop and request details
       final chatResponse = await Supabase.instance.client
@@ -60,34 +66,90 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
           .eq('id', widget.chatId)
           .single();
       
-      // Load messages
+      debugPrint('📦 [RequestChatScreen] Chat loaded: ${chatResponse['id']}');
+      
+      _chat = chatResponse;
+      _shop = chatResponse['shops'];
+      _request = chatResponse['part_requests'];
+      
+      // Get or create conversation for this request+shop pair
+      final requestId = _chat!['request_id'];
+      final shopId = _chat!['shop_id'];
+      final mechanicId = _request?['mechanic_id'] ?? _currentUserId;
+      
+      debugPrint('🔗 [RequestChatScreen] Looking for conversation:');
+      debugPrint('   - request_id: $requestId');
+      debugPrint('   - shop_id: $shopId');
+      debugPrint('   - mechanic_id: $mechanicId');
+      
+      // Try to find existing conversation
+      final existingConv = await Supabase.instance.client
+          .from('conversations')
+          .select('id')
+          .eq('request_id', requestId)
+          .eq('shop_id', shopId)
+          .maybeSingle();
+      
+      debugPrint('🔍 [RequestChatScreen] Existing conversation: $existingConv');
+      
+      if (existingConv != null) {
+        _conversationId = existingConv['id'];
+        debugPrint('✅ [RequestChatScreen] Found existing conversation: $_conversationId');
+      } else {
+        // Create new conversation
+        debugPrint('📝 [RequestChatScreen] Creating new conversation...');
+        final newConv = await Supabase.instance.client
+            .from('conversations')
+            .insert({
+              'request_id': requestId,
+              'mechanic_id': mechanicId,
+              'shop_id': shopId,
+            })
+            .select('id')
+            .single();
+        _conversationId = newConv['id'];
+        debugPrint('✅ [RequestChatScreen] Created new conversation: $_conversationId');
+      }
+      
+      // Load messages from conversations/messages system
+      debugPrint('📨 [RequestChatScreen] Loading messages for conversation: $_conversationId');
       final messagesResponse = await Supabase.instance.client
-          .from('chat_messages')
+          .from('messages')
           .select()
-          .eq('chat_id', widget.chatId)
-          .order('created_at');
+          .eq('conversation_id', _conversationId!)
+          .order('sent_at', ascending: true);
+      
+      debugPrint('📬 [RequestChatScreen] Messages loaded: ${messagesResponse.length}');
+      for (var msg in messagesResponse) {
+        debugPrint('   - ${msg['sender_id']}: ${msg['text']?.substring(0, (msg['text']?.length ?? 0) > 30 ? 30 : msg['text']?.length ?? 0)}...');
+      }
       
       setState(() {
-        _chat = chatResponse;
-        _shop = chatResponse['shops'];
-        _request = chatResponse['part_requests'];
         _messages = List<Map<String, dynamic>>.from(messagesResponse);
         _isLoading = false;
       });
       
       _scrollToBottom();
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('❌ [RequestChatScreen] Error loading chat: $e');
+      debugPrint('Stack: $stack');
       setState(() => _isLoading = false);
       _showError('Failed to load chat: $e');
     }
   }
 
   void _subscribeToMessages() {
+    // Wait for conversation ID to be set
+    if (_conversationId == null) {
+      Future.delayed(const Duration(milliseconds: 500), _subscribeToMessages);
+      return;
+    }
+    
     _messagesSubscription = Supabase.instance.client
-        .from('chat_messages')
+        .from('messages')
         .stream(primaryKey: ['id'])
-        .eq('chat_id', widget.chatId)
-        .order('created_at')
+        .eq('conversation_id', _conversationId!)
+        .order('sent_at')
         .listen((data) {
           setState(() {
             _messages = List<Map<String, dynamic>>.from(data);
@@ -220,17 +282,14 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
 
   Widget _buildMessageBubble(Map<String, dynamic> message) {
     final isMe = message['sender_id'] == _currentUserId;
-    final messageType = message['message_type'] ?? 'text';
-    final content = message['content'] ?? '';
+    final content = message['text'] ?? message['content'] ?? '';
     
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        child: messageType == 'quote'
-            ? _buildQuoteMessage(message, isMe)
-            : _buildTextMessage(content, isMe),
+        child: _buildTextMessage(content, isMe),
       ),
     );
   }
@@ -521,14 +580,16 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
   }
   
   Future<void> _sendQuestion(String question) async {
+    if (_conversationId == null) {
+      _showError('Chat not ready. Please try again.');
+      return;
+    }
     try {
-      await Supabase.instance.client.from('chat_messages').insert({
-        'chat_id': widget.chatId,
+      await Supabase.instance.client.from('messages').insert({
+        'conversation_id': _conversationId,
         'sender_id': _currentUserId,
-        'message_type': 'text',
-        'content': '❓ $question',
+        'text': '❓ $question',
       });
-      _loadChatData();
     } catch (e) {
       _showError('Failed to send question: $e');
     }
@@ -537,13 +598,16 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
   Future<void> _sendMessage() async {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
+    if (_conversationId == null) {
+      _showError('Chat not ready. Please try again.');
+      return;
+    }
     
     try {
-      await Supabase.instance.client.from('chat_messages').insert({
-        'chat_id': widget.chatId,
+      await Supabase.instance.client.from('messages').insert({
+        'conversation_id': _conversationId,
         'sender_id': _currentUserId,
-        'message_type': 'text',
-        'content': content,
+        'text': content,
       });
       
       _messageController.clear();
@@ -731,20 +795,22 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
     required String deliveryTime,
     required String notes,
   }) async {
+    if (_conversationId == null) {
+      _showError('Chat not ready. Please try again.');
+      return;
+    }
     try {
-      // Send quote message
-      await Supabase.instance.client.from('chat_messages').insert({
-        'chat_id': widget.chatId,
+      // Send quote message to messages table
+      final quoteText = '💰 Price Quote: R${amount.toStringAsFixed(2)}\n'
+          '• Part: R${partPrice.toStringAsFixed(2)}\n'
+          '• Delivery: R${deliveryFee.toStringAsFixed(2)}\n'
+          '• ETA: $deliveryTime'
+          '${notes.isNotEmpty ? '\n• Notes: $notes' : ''}';
+      
+      await Supabase.instance.client.from('messages').insert({
+        'conversation_id': _conversationId,
         'sender_id': _currentUserId,
-        'message_type': 'quote',
-        'content': 'Price Quote: R${amount.toStringAsFixed(2)}',
-        'data': {
-          'amount': amount,
-          'part_price': partPrice,
-          'delivery_fee': deliveryFee,
-          'delivery_time': deliveryTime,
-          'notes': notes,
-        },
+        'text': quoteText,
       });
       
       // Update chat status
@@ -790,12 +856,15 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
   }
 
   Future<void> _markNotAvailable() async {
+    if (_conversationId == null) {
+      _showError('Chat not ready. Please try again.');
+      return;
+    }
     try {
-      await Supabase.instance.client.from('chat_messages').insert({
-        'chat_id': widget.chatId,
+      await Supabase.instance.client.from('messages').insert({
+        'conversation_id': _conversationId,
         'sender_id': _currentUserId,
-        'message_type': 'text',
-        'content': 'Sorry, this part is not available at our shop.',
+        'text': 'Sorry, this part is not available at our shop.',
       });
       
       await Supabase.instance.client
@@ -810,6 +879,10 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
   }
 
   Future<void> _acceptQuote() async {
+    if (_conversationId == null) {
+      _showError('Chat not ready. Please try again.');
+      return;
+    }
     try {
       await Supabase.instance.client
           .from('request_chats')
@@ -828,11 +901,10 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
           .update({'status': 'accepted', 'accepted_shop_id': _chat!['shop_id']})
           .eq('id', _chat!['request_id']);
       
-      await Supabase.instance.client.from('chat_messages').insert({
-        'chat_id': widget.chatId,
+      await Supabase.instance.client.from('messages').insert({
+        'conversation_id': _conversationId,
         'sender_id': _currentUserId,
-        'message_type': 'text',
-        'content': '✅ Quote accepted! Let\'s arrange delivery.',
+        'text': '✅ Quote accepted! Let\'s arrange delivery.',
       });
       
       _loadChatData();
@@ -842,12 +914,15 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
   }
 
   Future<void> _rejectQuote() async {
+    if (_conversationId == null) {
+      _showError('Chat not ready. Please try again.');
+      return;
+    }
     try {
-      await Supabase.instance.client.from('chat_messages').insert({
-        'chat_id': widget.chatId,
+      await Supabase.instance.client.from('messages').insert({
+        'conversation_id': _conversationId,
         'sender_id': _currentUserId,
-        'message_type': 'text',
-        'content': 'Thanks, but I\'ll pass on this quote.',
+        'text': 'Thanks, but I\'ll pass on this quote.',
       });
       
       _loadChatData();

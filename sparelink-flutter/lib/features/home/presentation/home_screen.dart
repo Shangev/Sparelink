@@ -7,9 +7,45 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
+import '../../../shared/widgets/skeleton_loader.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/constants/environment_config.dart';
+
+/// Home screen stats data model
+class HomeStats {
+  final int pendingQuotes;
+  final int activeDeliveries;
+  final int totalRequests;
+  final int unreadMessages;
+  
+  HomeStats({
+    this.pendingQuotes = 0,
+    this.activeDeliveries = 0,
+    this.totalRequests = 0,
+    this.unreadMessages = 0,
+  });
+}
+
+/// Recent activity item model
+class RecentActivity {
+  final String id;
+  final String type; // 'quote', 'delivery', 'request', 'message'
+  final String title;
+  final String subtitle;
+  final DateTime timestamp;
+  final String? status;
+  
+  RecentActivity({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.timestamp,
+    this.status,
+  });
+}
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -20,11 +56,27 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isCheckingRole = true;
+  bool _isLoadingData = true;
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+  
+  // Data
+  HomeStats _stats = HomeStats();
+  List<RecentActivity> _recentActivity = [];
+  int _unreadNotifications = 0;
+  String _userName = '';
 
   @override
   void initState() {
     super.initState();
     _checkUserRole();
+  }
+  
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkUserRole() async {
@@ -32,49 +84,199 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final storageService = ref.read(storageServiceProvider);
       final supabaseService = ref.read(supabaseServiceProvider);
       
-      // First check local storage
       String? role = await storageService.getUserRole();
+      String? name = await storageService.getUserName();
       
-      // If no role in storage, check Supabase
       if (role == null || role.isEmpty) {
         final user = supabaseService.currentUser;
         if (user != null) {
           final profile = await supabaseService.getProfile(user.id);
           role = profile?['role'] as String?;
+          name = profile?['full_name'] as String?;
           
-          // Save to storage if found
           if (role != null) {
             await storageService.saveUserData(
               userId: user.id,
               role: role,
-              name: profile?['full_name'] ?? '',
+              name: name ?? '',
               phone: profile?['phone'] ?? '',
             );
           }
         }
       }
       
-      // If user is a shop, redirect to shop dashboard
       if (role == 'shop') {
         final session = Supabase.instance.client.auth.currentSession;
         await _redirectToShopDashboard(session?.accessToken);
         return;
       }
       
-      // User is mechanic, continue showing home screen
       if (mounted) {
-        setState(() => _isCheckingRole = false);
+        setState(() {
+          _isCheckingRole = false;
+          _userName = name ?? '';
+        });
+        _loadHomeData();
       }
     } catch (e) {
-      // On error, just show the home screen
       if (mounted) {
         setState(() => _isCheckingRole = false);
+        _loadHomeData();
       }
     }
   }
 
+  Future<void> _loadHomeData() async {
+    try {
+      final supabaseService = ref.read(supabaseServiceProvider);
+      final user = supabaseService.currentUser;
+      
+      if (user == null) {
+        setState(() => _isLoadingData = false);
+        return;
+      }
+
+      // Load stats and activity in parallel
+      final results = await Future.wait([
+        _loadStats(user.id),
+        _loadRecentActivity(user.id),
+        _loadUnreadNotifications(user.id),
+      ]);
+      
+      if (mounted) {
+        setState(() {
+          _stats = results[0] as HomeStats;
+          _recentActivity = results[1] as List<RecentActivity>;
+          _unreadNotifications = results[2] as int;
+          _isLoadingData = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingData = false);
+      }
+    }
+  }
+
+  Future<HomeStats> _loadStats(String userId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      
+      // Get pending quotes count
+      final quotesResponse = await supabase
+          .from('offers')
+          .select('id')
+          .eq('status', 'pending')
+          .eq('request_id', supabase.from('part_requests').select('id').eq('user_id', userId));
+      
+      // Get active deliveries
+      final deliveriesResponse = await supabase
+          .from('orders')
+          .select('id')
+          .eq('buyer_id', userId)
+          .inFilter('status', ['confirmed', 'shipped', 'in_transit']);
+      
+      // Get total requests
+      final requestsResponse = await supabase
+          .from('part_requests')
+          .select('id')
+          .eq('user_id', userId);
+      
+      // Get unread messages
+      final messagesResponse = await supabase
+          .from('messages')
+          .select('id')
+          .eq('read', false)
+          .neq('sender_id', userId);
+      
+      return HomeStats(
+        pendingQuotes: (quotesResponse as List).length,
+        activeDeliveries: (deliveriesResponse as List).length,
+        totalRequests: (requestsResponse as List).length,
+        unreadMessages: (messagesResponse as List).length,
+      );
+    } catch (e) {
+      return HomeStats();
+    }
+  }
+
+  Future<List<RecentActivity>> _loadRecentActivity(String userId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final activities = <RecentActivity>[];
+      
+      // Get recent requests
+      final requests = await supabase
+          .from('part_requests')
+          .select('id, part_name, status, created_at')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(3);
+      
+      for (final req in (requests as List)) {
+        activities.add(RecentActivity(
+          id: req['id'],
+          type: 'request',
+          title: req['part_name'] ?? 'Part Request',
+          subtitle: 'Status: ${req['status'] ?? 'pending'}',
+          timestamp: DateTime.parse(req['created_at']),
+          status: req['status'],
+        ));
+      }
+      
+      // Get recent offers
+      final offers = await supabase
+          .from('offers')
+          .select('id, price, status, created_at, part_requests!inner(user_id, part_name)')
+          .eq('part_requests.user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(3);
+      
+      for (final offer in (offers as List)) {
+        activities.add(RecentActivity(
+          id: offer['id'],
+          type: 'quote',
+          title: 'Quote: R${offer['price']}',
+          subtitle: offer['part_requests']?['part_name'] ?? 'Part',
+          timestamp: DateTime.parse(offer['created_at']),
+          status: offer['status'],
+        ));
+      }
+      
+      // Sort by timestamp
+      activities.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return activities.take(5).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<int> _loadUnreadNotifications(String userId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('read', false);
+      return (response as List).length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<void> _onRefresh() async {
+    await _loadHomeData();
+  }
+
+  void _onSearch(String query) {
+    if (query.trim().isNotEmpty) {
+      context.push('/request-part', extra: {'searchQuery': query.trim()});
+    }
+  }
+
   Future<void> _redirectToShopDashboard(String? accessToken) async {
-    const shopDashboardUrl = 'http://localhost:3000';
+    const shopDashboardUrl = EnvironmentConfig.shopDashboardUrl;
     
     if (kIsWeb) {
       final uri = Uri.parse('$shopDashboardUrl/dashboard?token=$accessToken');
@@ -99,45 +301,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'This app is for mechanics to request parts.',
-              style: TextStyle(color: AppTheme.lightGray),
-            ),
+            Text('This app is for mechanics to request parts.', style: TextStyle(color: AppTheme.lightGray)),
             SizedBox(height: 16),
-            Text(
-              'As a shop owner, please use the Shop Dashboard to manage your business:',
-              style: TextStyle(color: AppTheme.lightGray),
-            ),
+            Text('As a shop owner, please use the Shop Dashboard:', style: TextStyle(color: AppTheme.lightGray)),
             SizedBox(height: 12),
-            Text(
-              'http://localhost:3000',
-              style: TextStyle(color: AppTheme.accentGreen, fontWeight: FontWeight.w600),
-            ),
+            Text(EnvironmentConfig.shopDashboardUrl, style: TextStyle(color: AppTheme.accentGreen, fontWeight: FontWeight.w600)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              // Log out and go to login
               await Supabase.instance.client.auth.signOut();
               final storageService = ref.read(storageServiceProvider);
               await storageService.clearAll();
-              if (mounted) {
-                context.go('/login');
-              }
+              if (mounted) context.go('/login');
             },
             child: const Text('Sign Out'),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              // Try to open dashboard
-              const url = 'http://localhost:3000';
+              const url = EnvironmentConfig.shopDashboardUrl;
               final uri = Uri.parse(url);
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri);
-              }
+              if (await canLaunchUrl(uri)) await launchUrl(uri);
             },
             child: const Text('Open Dashboard'),
           ),
@@ -148,7 +335,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Show loading while checking role
     if (_isCheckingRole) {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
@@ -160,10 +346,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(height: 24),
               const CircularProgressIndicator(color: Colors.white),
               const SizedBox(height: 16),
-              Text(
-                'Loading...',
-                style: TextStyle(color: Colors.grey[400], fontSize: 16),
-              ),
+              Text('Loading...', style: TextStyle(color: Colors.grey[400], fontSize: 16)),
             ],
           ),
         ),
@@ -174,11 +357,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildHomeContent(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+    
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: Stack(
         children: [
-          // Background - Dark gradient/radial effect to match image
           Container(
             decoration: const BoxDecoration(
               gradient: RadialGradient(
@@ -188,128 +373,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
-          
           SafeArea(
             child: Column(
               children: [
-                // Fixed Header Bar - Only logo and notification icon
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Logo Section
-                      Row(
-                        children: [
-                          const SpareLinkLogo(size: 32, color: Colors.white),
-                          const SizedBox(width: 8),
-                          Column(
+                _buildHeader(),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _onRefresh,
+                    color: AppTheme.accentGreen,
+                    backgroundColor: AppTheme.darkGray,
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isDesktop ? 40 : 20,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1200),
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                'SpareLink',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              Text(
-                                'Mechanics',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                  height: 0.8,
-                                ),
-                              ),
+                            children: [
+                              const SizedBox(height: 16),
+                              _buildSearchBar(),
+                              const SizedBox(height: 24),
+                              if (isDesktop)
+                                _buildDesktopStats()
+                              else
+                                _buildQuickStats(),
+                              const SizedBox(height: 24),
+                              if (isDesktop)
+                                _buildDesktopGridCards()
+                              else
+                                _buildGridCards(),
+                              const SizedBox(height: 24),
+                              _buildRecentActivity(),
+                              const SizedBox(height: 20),
                             ],
                           ),
-                        ],
-                      ),
-                      // Notification Bell - Navigate to notifications
-                      GestureDetector(
-                        onTap: () => context.push('/notifications'),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(LucideIcons.bell, color: Colors.white, size: 22),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-
-                // Scrollable Content - Hero text and grid cards
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 40),
-
-                        // Hero Text
-                        const Text(
-                          'Find any part.\nDelivered fast.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            height: 1.1,
-                          ),
-                        ),
-
-                        const SizedBox(height: 40),
-
-                        // Grid Section - Using GridView with shrinkWrap
-                        GridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 16,
-                          childAspectRatio: 0.82,
-                          children: [
-                            // Request a Part -> New request flow
-                            _buildClickableGridCard(
-                              iconWidget: const SpareLinkLogo(size: 48, color: Colors.white),
-                              title: 'Request a Part',
-                              subtitle: 'Find parts quickly from nearby shops',
-                              onTap: () => context.push('/request-part'),
-                            ),
-                            // My Requests
-                            _buildClickableGridCard(
-                              icon: LucideIcons.clipboardList,
-                              title: 'My Requests',
-                              subtitle: 'Track offers and deliveries',
-                              onTap: () => context.push('/my-requests'),
-                            ),
-                            // Deliveries -> Order Tracking (show snackbar for now as it needs orderId)
-                            _buildClickableGridCard(
-                              icon: LucideIcons.truck,
-                              title: 'Deliveries',
-                              subtitle: 'Track your incoming parts',
-                              onTap: () {
-                                // Navigate to my-requests where user can select an order to track
-                                context.push('/my-requests');
-                              },
-                            ),
-                            // Chats
-                            _buildClickableGridCard(
-                              icon: LucideIcons.messageCircle,
-                              title: 'Chats',
-                              subtitle: 'Confirm part details before ordering.',
-                              onTap: () => context.push('/chats'),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 20),
-                      ],
                     ),
                   ),
                 ),
@@ -318,44 +421,203 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      // Bottom Navigation Bar
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(bottom: 20, top: 10),
-        decoration: const BoxDecoration(
-          color: Colors.black,
-          border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+      // Bottom nav is now handled by ResponsiveShell on mobile
+      // On desktop, sidebar is shown instead
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              const SpareLinkLogo(size: 32, color: Colors.white),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('SpareLink', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+                  Text(
+                    _userName.isNotEmpty ? 'Hi, ${_userName.split(' ').first}' : 'Mechanics',
+                    style: const TextStyle(color: Colors.grey, fontSize: 14, height: 0.8),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          // Notification Bell with Badge
+          GestureDetector(
+            onTap: () => context.push('/notifications'),
+            child: Stack(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(LucideIcons.bell, color: Colors.white, size: 22),
+                ),
+                if (_unreadNotifications > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      child: Text(
+                        _unreadNotifications > 99 ? '99+' : '$_unreadNotifications',
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: 'Search for parts...',
+          hintStyle: TextStyle(color: Colors.grey[500]),
+          prefixIcon: const Icon(LucideIcons.search, color: Colors.grey, size: 20),
+          suffixIcon: IconButton(
+            icon: const Icon(LucideIcons.arrowRight, color: AppTheme.accentGreen, size: 20),
+            onPressed: () => _onSearch(_searchController.text),
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+        onSubmitted: _onSearch,
+      ),
+    );
+  }
+
+  Widget _buildQuickStats() {
+    if (_isLoadingData) {
+      return Row(
+        children: const [
+          Expanded(child: SkeletonStatCard()),
+          SizedBox(width: 12),
+          Expanded(child: SkeletonStatCard()),
+          SizedBox(width: 12),
+          Expanded(child: SkeletonStatCard()),
+        ],
+      );
+    }
+    
+    return Row(
+      children: [
+        Expanded(child: _buildStatCard('${_stats.pendingQuotes}', 'Pending\nQuotes', LucideIcons.fileText, Colors.orange)),
+        const SizedBox(width: 12),
+        Expanded(child: _buildStatCard('${_stats.activeDeliveries}', 'Active\nDeliveries', LucideIcons.truck, Colors.blue)),
+        const SizedBox(width: 12),
+        Expanded(child: _buildStatCard('${_stats.unreadMessages}', 'Unread\nMessages', LucideIcons.messageCircle, AppTheme.accentGreen)),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String value, String label, IconData icon, Color color) {
+    return GestureDetector(
+      onTap: () {
+        if (label.contains('Quotes')) context.push('/my-requests');
+        else if (label.contains('Deliveries')) context.push('/my-requests');
+        else if (label.contains('Messages')) context.push('/chats');
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Home - Already here, stays active
-            _buildNavItemClickable(
-              icon: LucideIcons.grid3x3,
-              label: 'Home',
-              isActive: true,
-              onTap: () {}, // Already on home
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(value, style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold)),
+                Icon(icon, color: color, size: 20),
+              ],
             ),
-            // My Requests
-            _buildNavItemClickable(
-              icon: LucideIcons.clipboardList,
-              label: 'My Requests',
-              onTap: () => context.push('/my-requests'),
-            ),
-            // Chats
-            _buildNavItemClickable(
-              icon: LucideIcons.messageSquare,
-              label: 'Chats',
-              onTap: () => context.push('/chats'),
-            ),
-            // Profile
-            _buildNavItemClickable(
-              icon: LucideIcons.user,
-              label: 'Profile',
-              onTap: () => context.push('/profile'),
-            ),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, height: 1.2)),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildGridCards() {
+    if (_isLoadingData) {
+      return GridView.count(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 2,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: 0.95,
+        children: const [SkeletonGridCard(), SkeletonGridCard(), SkeletonGridCard(), SkeletonGridCard()],
+      );
+    }
+    
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      mainAxisSpacing: 16,
+      crossAxisSpacing: 16,
+      childAspectRatio: 0.95,
+      children: [
+        _buildClickableGridCard(
+          iconWidget: const SpareLinkLogo(size: 40, color: Colors.white),
+          title: 'Request a Part',
+          subtitle: 'Find parts from nearby shops',
+          onTap: () => context.push('/request-part'),
+        ),
+        _buildClickableGridCard(
+          icon: LucideIcons.clipboardList,
+          title: 'My Requests',
+          subtitle: 'Track offers and orders',
+          badge: _stats.pendingQuotes > 0 ? '${_stats.pendingQuotes}' : null,
+          onTap: () => context.push('/my-requests'),
+        ),
+        _buildClickableGridCard(
+          icon: LucideIcons.truck,
+          title: 'Deliveries',
+          subtitle: 'Track incoming parts',
+          badge: _stats.activeDeliveries > 0 ? '${_stats.activeDeliveries}' : null,
+          onTap: () => context.push('/my-requests'),
+        ),
+        _buildClickableGridCard(
+          icon: LucideIcons.messageCircle,
+          title: 'Chats',
+          subtitle: 'Discuss with suppliers',
+          badge: _stats.unreadMessages > 0 ? '${_stats.unreadMessages}' : null,
+          onTap: () => context.push('/chats'),
+        ),
+      ],
     );
   }
 
@@ -364,32 +626,173 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Widget? iconWidget,
     required String title,
     required String subtitle,
+    String? badge,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.08),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            iconWidget ?? Icon(icon, color: Colors.white, size: 48),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  iconWidget ?? Icon(icon, color: Colors.white, size: 40),
+                  const SizedBox(height: 12),
+                  Text(
+                    title, 
+                    textAlign: TextAlign.center, 
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle, 
+                    textAlign: TextAlign.center, 
+                    style: const TextStyle(color: Colors.grey, fontSize: 12, height: 1.3),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 13, height: 1.3),
+            if (badge != null)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(badge, style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentActivity() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Recent Activity', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            TextButton(
+              onPressed: () => context.push('/my-requests'),
+              child: const Text('View All', style: TextStyle(color: AppTheme.accentGreen, fontSize: 14)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_isLoadingData)
+          Column(children: const [SkeletonActivityItem(), SkeletonActivityItem(), SkeletonActivityItem()])
+        else if (_recentActivity.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                Icon(LucideIcons.inbox, color: Colors.grey[600], size: 48),
+                const SizedBox(height: 12),
+                const Text('No recent activity', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                const SizedBox(height: 8),
+                const Text('Request a part to get started!', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ],
+            ),
+          )
+        else
+          ...(_recentActivity.map((activity) => _buildActivityItem(activity))),
+      ],
+    );
+  }
+
+  Widget _buildActivityItem(RecentActivity activity) {
+    IconData icon;
+    Color color;
+    
+    switch (activity.type) {
+      case 'quote':
+        icon = LucideIcons.fileText;
+        color = Colors.orange;
+        break;
+      case 'delivery':
+        icon = LucideIcons.truck;
+        color = Colors.blue;
+        break;
+      case 'message':
+        icon = LucideIcons.messageCircle;
+        color = AppTheme.accentGreen;
+        break;
+      default:
+        icon = LucideIcons.clipboardList;
+        color = Colors.purple;
+    }
+    
+    final timeAgo = _getTimeAgo(activity.timestamp);
+    
+    return GestureDetector(
+      onTap: () => context.push('/my-requests'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(activity.title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 4),
+                  Text(activity.subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(timeAgo, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                const SizedBox(height: 4),
+                if (activity.status != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(activity.status!).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      activity.status!,
+                      style: TextStyle(color: _getStatusColor(activity.status!), fontSize: 10, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -397,25 +800,226 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildNavItemClickable({
+  String _getTimeAgo(DateTime dateTime) {
+    final difference = DateTime.now().difference(dateTime);
+    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
+    if (difference.inHours < 24) return '${difference.inHours}h ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${(difference.inDays / 7).floor()}w ago';
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending': return Colors.orange;
+      case 'accepted': return AppTheme.accentGreen;
+      case 'rejected': return Colors.red;
+      case 'completed': return Colors.blue;
+      default: return Colors.grey;
+    }
+  }
+
+  /// Desktop-optimized stats row with 4 columns
+  Widget _buildDesktopStats() {
+    if (_isLoadingData) {
+      return Row(
+        children: const [
+          Expanded(child: SkeletonStatCard()),
+          SizedBox(width: 16),
+          Expanded(child: SkeletonStatCard()),
+          SizedBox(width: 16),
+          Expanded(child: SkeletonStatCard()),
+          SizedBox(width: 16),
+          Expanded(child: SkeletonStatCard()),
+        ],
+      );
+    }
+    
+    return Row(
+      children: [
+        Expanded(child: _buildDesktopStatCard('${_stats.pendingQuotes}', 'Pending Quotes', LucideIcons.fileText, Colors.orange, '/my-requests')),
+        const SizedBox(width: 16),
+        Expanded(child: _buildDesktopStatCard('${_stats.activeDeliveries}', 'Active Deliveries', LucideIcons.truck, Colors.blue, '/my-requests')),
+        const SizedBox(width: 16),
+        Expanded(child: _buildDesktopStatCard('${_stats.totalRequests}', 'Total Requests', LucideIcons.clipboardList, Colors.purple, '/my-requests')),
+        const SizedBox(width: 16),
+        Expanded(child: _buildDesktopStatCard('${_stats.unreadMessages}', 'Unread Messages', LucideIcons.messageCircle, AppTheme.accentGreen, '/chats')),
+      ],
+    );
+  }
+
+  Widget _buildDesktopStatCard(String value, String label, IconData icon, Color color, String route) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => context.push(route),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(value, style: TextStyle(color: color, fontSize: 32, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                  ],
+                ),
+              ),
+              Icon(LucideIcons.chevronRight, color: color.withOpacity(0.5), size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Desktop-optimized grid with 4 columns
+  Widget _buildDesktopGridCards() {
+    if (_isLoadingData) {
+      return GridView.count(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 4,
+        mainAxisSpacing: 20,
+        crossAxisSpacing: 20,
+        childAspectRatio: 1.1,
+        children: const [SkeletonGridCard(), SkeletonGridCard(), SkeletonGridCard(), SkeletonGridCard()],
+      );
+    }
+    
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 4,
+      mainAxisSpacing: 20,
+      crossAxisSpacing: 20,
+      childAspectRatio: 1.1,
+      children: [
+        _buildDesktopGridCard(
+          iconWidget: const SpareLinkLogo(size: 48, color: Colors.white),
+          title: 'Request a Part',
+          subtitle: 'Find parts from nearby shops',
+          onTap: () => context.push('/request-part'),
+          isPrimary: true,
+        ),
+        _buildDesktopGridCard(
+          icon: LucideIcons.clipboardList,
+          title: 'My Requests',
+          subtitle: 'Track your part requests and offers',
+          badge: _stats.pendingQuotes > 0 ? '${_stats.pendingQuotes}' : null,
+          onTap: () => context.push('/my-requests'),
+        ),
+        _buildDesktopGridCard(
+          icon: LucideIcons.truck,
+          title: 'Deliveries',
+          subtitle: 'Track incoming parts',
+          badge: _stats.activeDeliveries > 0 ? '${_stats.activeDeliveries}' : null,
+          onTap: () => context.push('/my-requests'),
+        ),
+        _buildDesktopGridCard(
+          icon: LucideIcons.messageCircle,
+          title: 'Chats',
+          subtitle: 'Discuss with suppliers',
+          badge: _stats.unreadMessages > 0 ? '${_stats.unreadMessages}' : null,
+          onTap: () => context.push('/chats'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopGridCard({
     IconData? icon,
     Widget? iconWidget,
-    required String label,
-    bool isActive = false,
+    required String title,
+    required String subtitle,
+    String? badge,
     required VoidCallback onTap,
+    bool isPrimary = false,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          iconWidget ?? Icon(icon, color: isActive ? Colors.white : Colors.white38, size: 26),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(color: isActive ? Colors.white : Colors.white38, fontSize: 12),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: isPrimary 
+                ? AppTheme.accentGreen.withOpacity(0.15)
+                : Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isPrimary
+                  ? AppTheme.accentGreen.withOpacity(0.4)
+                  : Colors.white.withOpacity(0.1),
+              width: isPrimary ? 2 : 1,
+            ),
           ),
-        ],
+          child: Stack(
+            children: [
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    iconWidget ?? Icon(
+                      icon, 
+                      color: isPrimary ? AppTheme.accentGreen : Colors.white, 
+                      size: 48,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      title, 
+                      textAlign: TextAlign.center, 
+                      style: TextStyle(
+                        color: isPrimary ? AppTheme.accentGreen : Colors.white, 
+                        fontSize: 18, 
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      subtitle, 
+                      textAlign: TextAlign.center, 
+                      style: const TextStyle(color: Colors.grey, fontSize: 13, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+              if (badge != null)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentGreen,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      badge, 
+                      style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -211,6 +211,9 @@ class SupabaseService {
   // ============================================
   
   /// Create a new part request
+  /// 
+  /// The [imageUrl] parameter stores the primary part image URL.
+  /// This is displayed on the My Requests screen and in the Shop Dashboard.
   Future<Map<String, dynamic>> createPartRequest({
     required String mechanicId,
     required String vehicleMake,
@@ -220,7 +223,7 @@ class SupabaseService {
     String? description,
     String? vin,
     String? engineNumber,
-    List<String>? imageUrls,
+    String? imageUrl,  // Single image URL for the primary part photo
     double? lat,
     double? lng,
   }) async {
@@ -233,7 +236,7 @@ class SupabaseService {
       'description': description,
       'vin': vin,
       'engine_number': engineNumber,
-      'image_urls': imageUrls,
+      'image_url': imageUrl,  // Stores in image_url column
       'status': 'pending',
       'offer_count': 0,
     };
@@ -520,6 +523,17 @@ class SupabaseService {
     return response;
   }
   
+  /// Get orders for a specific request
+  Future<List<Map<String, dynamic>>> getOrdersForRequest(String requestId) async {
+    final response = await _client
+        .from(SupabaseConstants.ordersTable)
+        .select('*, offers(*, shops(*))')
+        .eq('request_id', requestId)
+        .order('created_at', ascending: false);
+    
+    return List<Map<String, dynamic>>.from(response);
+  }
+  
   /// Subscribe to order status changes (real-time)
   RealtimeChannel subscribeToOrder(String orderId, void Function(Map<String, dynamic>) onUpdate) {
     return _client
@@ -545,6 +559,9 @@ class SupabaseService {
   // ============================================
   
   /// Get request_chats for a mechanic (all shops that received their requests)
+  /// Filters out:
+  /// - Archived chats (archived_at is not null)
+  /// - Completed/rejected chats older than 24 hours (data retention policy)
   Future<List<Map<String, dynamic>>> getMechanicRequestChats(String mechanicId) async {
     // First get all part_requests for this mechanic
     final requests = await _client
@@ -558,18 +575,43 @@ class SupabaseService {
     
     final requestIds = requests.map((r) => r['id'] as String).toList();
     
+    // Calculate 24 hours ago for data retention cutoff
+    final retentionCutoff = DateTime.now().subtract(const Duration(hours: 24)).toUtc().toIso8601String();
+    
     // Get all request_chats for these requests with shop and request details
+    // Filter out archived chats
     final response = await _client
         .from('request_chats')
         .select('''
           *,
           shops:shop_id(id, name, phone, suburb, rating),
-          part_requests:request_id(id, vehicle_make, vehicle_model, vehicle_year, part_category, status)
+          part_requests:request_id(id, vehicle_make, vehicle_model, vehicle_year, part_category, status, mechanic_id)
         ''')
         .inFilter('request_id', requestIds)
         .order('updated_at', ascending: false);
     
-    return List<Map<String, dynamic>>.from(response);
+    // Filter out old completed/rejected chats (24h data retention policy)
+    final filteredChats = (response as List).where((chat) {
+      // Always show pending and quoted chats
+      final status = chat['status'] as String?;
+      if (status == 'pending' || status == 'quoted') {
+        return true;
+      }
+      
+      // For accepted/rejected/completed - check if within 24 hours
+      final updatedAt = chat['updated_at'] as String?;
+      if (updatedAt == null) return true;
+      
+      try {
+        final updateTime = DateTime.parse(updatedAt);
+        final cutoffTime = DateTime.parse(retentionCutoff);
+        return updateTime.isAfter(cutoffTime);
+      } catch (e) {
+        return true; // Keep if we can't parse the date
+      }
+    }).toList();
+    
+    return List<Map<String, dynamic>>.from(filteredChats);
   }
   
   /// Get or create a conversation
@@ -604,11 +646,13 @@ class SupabaseService {
   }
   
   /// Get conversations for a user (mechanic or shop)
+  /// Filters out archived conversations (archived_at is not null)
   Future<List<Map<String, dynamic>>> getUserConversations(String userId) async {
     final response = await _client
         .from(SupabaseConstants.conversationsTable)
         .select('*, shops(*), profiles(*), messages(text, sent_at)')
         .or('mechanic_id.eq.$userId,shop_id.eq.$userId')
+        .isFilter('archived_at', null)  // Only show non-archived conversations
         .order('created_at', ascending: false);
     
     return List<Map<String, dynamic>>.from(response);
@@ -642,6 +686,146 @@ class SupabaseService {
         .single();
     
     return response;
+  }
+  
+  /// Get unread message count for a chat
+  /// 
+  /// FIXED: Queries request_chat_messages table directly (the actual source of chat messages)
+  /// instead of the older conversations+messages tables
+  Future<int> getUnreadCountForChat(String requestId, String shopId, String userId) async {
+    try {
+      // Query request_chat_messages directly - this is where chat messages are stored
+      final response = await _client
+          .from('request_chat_messages')
+          .select('id')
+          .eq('request_id', requestId)
+          .eq('shop_id', shopId)
+          .neq('sender_id', userId)
+          .eq('is_read', false);
+      
+      final count = (response as List).length;
+      debugPrint('📊 [getUnreadCountForChat] request: $requestId, shop: $shopId, unread: $count');
+      return count;
+    } catch (e) {
+      debugPrint('⚠️ [getUnreadCountForChat] Error: $e');
+      
+      // Fallback: Try the old conversations+messages tables
+      try {
+        final conversation = await _client
+            .from(SupabaseConstants.conversationsTable)
+            .select('id')
+            .eq('request_id', requestId)
+            .eq('shop_id', shopId)
+            .maybeSingle();
+        
+        if (conversation == null) return 0;
+        
+        final fallbackResponse = await _client
+            .from(SupabaseConstants.messagesTable)
+            .select('id')
+            .eq('conversation_id', conversation['id'])
+            .neq('sender_id', userId)
+            .eq('is_read', false);
+        
+        return (fallbackResponse as List).length;
+      } catch (e2) {
+        debugPrint('⚠️ [getUnreadCountForChat] Fallback also failed: $e2');
+        return 0;
+      }
+    }
+  }
+  
+  /// Mark all messages as read in a chat
+  /// 
+  /// FIXED: Now marks messages in request_chat_messages table (primary)
+  /// with fallback to conversations+messages tables
+  Future<void> markMessagesAsRead(String conversationId, String userId) async {
+    // Try to mark in the old messages table first (for backward compatibility)
+    try {
+      await _client
+          .from(SupabaseConstants.messagesTable)
+          .update({
+            'is_read': true,
+            'read_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('conversation_id', conversationId)
+          .neq('sender_id', userId)
+          .eq('is_read', false);
+    } catch (e) {
+      debugPrint('⚠️ [markMessagesAsRead] Failed to update messages table: $e');
+    }
+  }
+  
+  /// Mark all messages as read for a request+shop chat
+  /// This is the primary method for request_chats system
+  Future<void> markRequestChatMessagesAsRead(String requestId, String shopId, String userId) async {
+    try {
+      final result = await _client
+          .from('request_chat_messages')
+          .update({
+            'is_read': true,
+            'read_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('request_id', requestId)
+          .eq('shop_id', shopId)
+          .neq('sender_id', userId)
+          .eq('is_read', false)
+          .select('id');
+      
+      final count = (result as List).length;
+      debugPrint('✅ [markRequestChatMessagesAsRead] Marked $count messages as read');
+    } catch (e) {
+      debugPrint('⚠️ [markRequestChatMessagesAsRead] Error: $e');
+    }
+  }
+  
+  /// Get last message for a request+shop chat (includes is_read for status ticks)
+  /// 
+  /// FIXED: Queries request_chat_messages directly instead of conversations+messages
+  Future<Map<String, dynamic>?> getLastMessageForChat(String requestId, String shopId) async {
+    try {
+      // Query request_chat_messages directly
+      final response = await _client
+          .from('request_chat_messages')
+          .select('text, sent_at, sender_id, is_read')
+          .eq('request_id', requestId)
+          .eq('shop_id', shopId)
+          .order('sent_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      if (response != null) {
+        debugPrint('📬 [getLastMessageForChat] Found message: ${response['text']?.toString().substring(0, 20) ?? 'null'}...');
+        return response;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [getLastMessageForChat] Error querying request_chat_messages: $e');
+    }
+    
+    // Fallback: Try the old conversations+messages tables
+    try {
+      final conversation = await _client
+          .from(SupabaseConstants.conversationsTable)
+          .select('id')
+          .eq('request_id', requestId)
+          .eq('shop_id', shopId)
+          .maybeSingle();
+      
+      if (conversation == null) return null;
+      
+      final response = await _client
+          .from(SupabaseConstants.messagesTable)
+          .select('text, sent_at, sender_id, is_read')
+          .eq('conversation_id', conversation['id'])
+          .order('sent_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      return response;
+    } catch (e2) {
+      debugPrint('⚠️ [getLastMessageForChat] Fallback also failed: $e2');
+      return null;
+    }
   }
   
   /// Subscribe to new messages in a conversation (real-time)

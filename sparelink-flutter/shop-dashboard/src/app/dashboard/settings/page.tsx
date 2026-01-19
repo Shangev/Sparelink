@@ -1,8 +1,29 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabase"
-import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2 } from "lucide-react"
+import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2, Search, ShieldCheck, Lock } from "lucide-react"
+
+// Google Places API routes (proxied to avoid CORS)
+
+interface PlacePrediction {
+  place_id: string
+  description: string
+  structured_formatting: {
+    main_text: string
+    secondary_text: string
+  }
+}
+
+interface PlaceDetails {
+  formatted_address: string
+  street_number?: string
+  street_name?: string
+  suburb?: string
+  city?: string
+  province?: string
+  postal_code?: string
+}
 
 interface ShopSettings {
   id: string
@@ -51,10 +72,120 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState("profile")
+  
+  // Google Places state
+  const [addressSearch, setAddressSearch] = useState("")
+  const [predictions, setPredictions] = useState<PlacePrediction[]>([])
+  const [showPredictions, setShowPredictions] = useState(false)
+  const [searchingPlaces, setSearchingPlaces] = useState(false)
+  const [addressVerified, setAddressVerified] = useState(false)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     loadSettings()
   }, [])
+  
+  // Google Places search with debounce (using local API proxy)
+  const searchPlaces = async (query: string) => {
+    if (query.length < 3) {
+      setPredictions([])
+      setShowPredictions(false)
+      return
+    }
+    
+    setSearchingPlaces(true)
+    try {
+      const response = await fetch(`/api/places/autocomplete?input=${encodeURIComponent(query)}`)
+      const data = await response.json()
+      if (data.predictions) {
+        setPredictions(data.predictions)
+        setShowPredictions(true)
+      }
+    } catch (error) {
+      console.error("Places search error:", error)
+    } finally {
+      setSearchingPlaces(false)
+    }
+  }
+  
+  // Handle address search input
+  const handleAddressSearchChange = (value: string) => {
+    setAddressSearch(value)
+    setAddressVerified(false) // Reset verification on new search
+    
+    // Debounce the search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      searchPlaces(value)
+    }, 400)
+  }
+  
+  // Get place details and extract address components (using local API proxy)
+  const selectPlace = async (placeId: string, description: string) => {
+    setAddressSearch(description)
+    setShowPredictions(false)
+    setSearchingPlaces(true)
+    
+    try {
+      const response = await fetch(`/api/places/details?place_id=${placeId}`)
+      const data = await response.json()
+      
+      if (data.result) {
+        const components = data.result.address_components || []
+        let streetNumber = ""
+        let streetName = ""
+        let suburb = ""
+        let city = ""
+        let province = ""
+        let postalCode = ""
+        
+        for (const component of components) {
+          const types = component.types || []
+          if (types.includes("street_number")) {
+            streetNumber = component.long_name
+          } else if (types.includes("route")) {
+            streetName = component.long_name
+          } else if (types.includes("sublocality") || types.includes("sublocality_level_1") || types.includes("neighborhood")) {
+            suburb = component.long_name
+          } else if (types.includes("locality")) {
+            city = component.long_name
+          } else if (types.includes("administrative_area_level_1")) {
+            province = component.long_name
+          } else if (types.includes("postal_code")) {
+            postalCode = component.long_name
+          }
+        }
+        
+        // Fallback for suburb
+        if (!suburb) {
+          for (const component of components) {
+            if (component.types.includes("administrative_area_level_2")) {
+              suburb = component.long_name
+              break
+            }
+          }
+        }
+        
+        // Update settings with verified data
+        setSettings(prev => ({
+          ...prev,
+          address: data.result.formatted_address,
+          street_address: streetNumber ? `${streetNumber} ${streetName}` : streetName,
+          suburb: suburb,
+          city: city,
+          postal_code: postalCode,
+        }))
+        
+        setAddressVerified(suburb !== "" || city !== "")
+      }
+    } catch (error) {
+      console.error("Place details error:", error)
+    } finally {
+      setSearchingPlaces(false)
+    }
+  }
 
   const loadSettings = async () => {
     try {
@@ -273,6 +404,53 @@ export default function SettingsPage() {
             </div>
             
             <div className="space-y-4">
+              {/* Google Places Search */}
+              <div className="relative">
+                <label className="block text-sm text-gray-400 mb-2">Search Address</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                  <input
+                    type="text"
+                    value={addressSearch}
+                    onChange={(e) => handleAddressSearchChange(e.target.value)}
+                    onFocus={() => predictions.length > 0 && setShowPredictions(true)}
+                    placeholder="Start typing your address..."
+                    className="w-full bg-[#2d2d2d] text-white pl-11 pr-10 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                  />
+                  {searchingPlaces && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-accent animate-spin" />
+                  )}
+                </div>
+                
+                {/* Predictions Dropdown */}
+                {showPredictions && predictions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-[#2d2d2d] border border-gray-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                    {predictions.map((prediction) => (
+                      <button
+                        key={prediction.place_id}
+                        onClick={() => selectPlace(prediction.place_id, prediction.description)}
+                        className="w-full px-4 py-3 text-left hover:bg-[#3d3d3d] border-b border-gray-700 last:border-0 transition-colors"
+                      >
+                        <p className="text-white font-medium">{prediction.structured_formatting.main_text}</p>
+                        <p className="text-gray-500 text-sm">{prediction.structured_formatting.secondary_text}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Verified Location Badge */}
+              {addressVerified && (
+                <div className="flex items-center gap-2 p-3 bg-accent/10 border border-accent/30 rounded-lg">
+                  <ShieldCheck className="w-5 h-5 text-accent" />
+                  <div>
+                    <p className="text-accent font-medium text-sm">Location Verified</p>
+                    <p className="text-gray-400 text-xs">Suburb and City are locked to Google data for accurate matching</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Street Address (editable) */}
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Street Address</label>
                 <input
@@ -284,29 +462,47 @@ export default function SettingsPage() {
                 />
               </div>
               
+              {/* Suburb (LOCKED when verified) */}
               <div>
-                <label className="block text-sm text-gray-400 mb-2">
+                <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
                   Suburb <span className="text-accent">*</span>
+                  {addressVerified && <Lock className="w-3 h-3 text-gray-500" />}
                 </label>
                 <input
                   type="text"
                   value={settings.suburb || ""}
-                  onChange={(e) => setSettings({ ...settings, suburb: e.target.value })}
-                  placeholder="e.g. Sandton, Rosebank, Midrand"
-                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                  onChange={(e) => !addressVerified && setSettings({ ...settings, suburb: e.target.value })}
+                  readOnly={addressVerified}
+                  placeholder="Select address above to auto-fill"
+                  className={`w-full px-4 py-3 rounded-lg border focus:outline-none ${
+                    addressVerified 
+                      ? "bg-[#1a1a1a] text-gray-400 border-accent/30 cursor-not-allowed" 
+                      : "bg-[#2d2d2d] text-white border-gray-700 focus:border-accent"
+                  }`}
                 />
-                <p className="text-xs text-gray-500 mt-1">This is used to match you with nearby mechanics</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {addressVerified ? "Locked to Google verified data" : "This is used to match you with nearby mechanics"}
+                </p>
               </div>
               
+              {/* City and Postal Code */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">City</label>
+                  <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+                    City
+                    {addressVerified && <Lock className="w-3 h-3 text-gray-500" />}
+                  </label>
                   <input
                     type="text"
                     value={settings.city || ""}
-                    onChange={(e) => setSettings({ ...settings, city: e.target.value })}
+                    onChange={(e) => !addressVerified && setSettings({ ...settings, city: e.target.value })}
+                    readOnly={addressVerified}
                     placeholder="e.g. Johannesburg"
-                    className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                    className={`w-full px-4 py-3 rounded-lg border focus:outline-none ${
+                      addressVerified 
+                        ? "bg-[#1a1a1a] text-gray-400 border-accent/30 cursor-not-allowed" 
+                        : "bg-[#2d2d2d] text-white border-gray-700 focus:border-accent"
+                    }`}
                   />
                 </div>
                 <div>

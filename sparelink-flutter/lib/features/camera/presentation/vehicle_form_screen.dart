@@ -205,7 +205,7 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
         vin: _vinController.text.trim().isEmpty
             ? null
             : _vinController.text.trim(),
-        imageUrls: imageUrls.isEmpty ? null : imageUrls,
+        imageUrl: imageUrls.isNotEmpty ? imageUrls.first : null,
       );
       
       if (mounted) {

@@ -402,7 +402,8 @@ class PartRequest {
   final int? vehicleYear;
   final String? partName;
   final String? description;
-  final List<String>? imageUrls;
+  final String? imageUrl;  // Primary part image URL (stored in image_url column)
+  final String? suburb;    // Location suburb for shop matching
   final RequestStatus status;
   final int offerCount;
   final int shopCount;  // Total shops that received the request
@@ -418,7 +419,8 @@ class PartRequest {
     this.vehicleYear,
     this.partName,
     this.description,
-    this.imageUrls,
+    this.imageUrl,
+    this.suburb,
     this.status = RequestStatus.pending,
     this.offerCount = 0,
     this.shopCount = 0,
@@ -469,6 +471,15 @@ class PartRequest {
   }
 
   factory PartRequest.fromJson(Map<String, dynamic> json) {
+    // Handle image URL - check both image_url (new) and image_urls (legacy)
+    String? imageUrl = json['image_url'];
+    if (imageUrl == null && json['image_urls'] != null) {
+      final urls = json['image_urls'];
+      if (urls is List && urls.isNotEmpty) {
+        imageUrl = urls.first as String?;
+      }
+    }
+    
     return PartRequest(
       id: json['id'],
       mechanicId: json['mechanic_id'],
@@ -477,9 +488,8 @@ class PartRequest {
       vehicleYear: json['vehicle_year'],
       partName: json['part_name'] ?? json['part_category'],
       description: json['description'],
-      imageUrls: json['image_urls'] != null 
-          ? List<String>.from(json['image_urls']) 
-          : null,
+      imageUrl: imageUrl,
+      suburb: json['suburb'],
       status: _parseRequestStatus(json['status']),
       offerCount: json['offer_count'] ?? 0,
       shopCount: json['shop_count'] ?? 0,
@@ -502,7 +512,8 @@ class PartRequest {
       'vehicle_year': vehicleYear,
       'part_name': partName,
       'description': description,
-      'image_urls': imageUrls,
+      'image_url': imageUrl,
+      'suburb': suburb,
       'status': status.name,
       'offer_count': offerCount,
       'shop_count': shopCount,

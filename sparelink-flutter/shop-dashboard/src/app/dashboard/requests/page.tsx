@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { Search, Filter, Clock, MapPin, Car, Wrench, X, Send, Loader2, AlertCircle, CheckCircle } from "lucide-react"
+import { Search, Filter, Clock, MapPin, Car, Wrench, X, Send, Loader2, AlertCircle, CheckCircle, MessageCircle, ZoomIn } from "lucide-react"
 
 interface PartRequest {
   id: string
@@ -14,7 +15,7 @@ interface PartRequest {
   part_description: string
   status: string
   created_at: string
-  images: string[]
+  image_url: string | null  // Primary part image stored in image_url column
   profiles?: { full_name: string; phone: string }
 }
 
@@ -36,6 +37,7 @@ const initialQuoteData: QuoteFormData = {
 }
 
 export default function RequestsPage() {
+  const router = useRouter()
   const [requests, setRequests] = useState<PartRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -45,6 +47,8 @@ export default function RequestsPage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [shopId, setShopId] = useState<string | null>(null)
 
   useEffect(() => {
     loadRequests()
@@ -70,6 +74,8 @@ export default function RequestsPage() {
         setLoading(false)
         return
       }
+      
+      setShopId(shop.id)
 
       // Get request_chats assigned to THIS shop that are still pending for THIS shop
       // This ensures each shop sees requests independently - one shop's action doesn't affect others
@@ -300,12 +306,33 @@ export default function RequestsPage() {
           {filteredRequests.map((request) => (
             <div key={request.id} className="bg-[#1a1a1a] rounded-xl border border-gray-800 overflow-hidden hover:border-gray-700 transition-colors">
               <div className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-accent/20 rounded-lg flex items-center justify-center">
-                        <Car className="w-5 h-5 text-accent" />
+                <div className="flex items-start gap-4">
+                  {/* Part Image - Clickable for Lightbox */}
+                  <div className="flex-shrink-0">
+                    {request.image_url ? (
+                      <div 
+                        onClick={() => setLightboxImage(request.image_url)}
+                        className="relative w-24 h-24 rounded-lg overflow-hidden cursor-pointer group"
+                      >
+                        <img 
+                          src={request.image_url} 
+                          alt={request.part_category}
+                          className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                        />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <ZoomIn className="w-6 h-6 text-white" />
+                        </div>
                       </div>
+                    ) : (
+                      <div className="w-24 h-24 bg-[#2d2d2d] rounded-lg flex items-center justify-center">
+                        <Car className="w-8 h-8 text-gray-600" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Request Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-2">
                       <div>
                         <h3 className="text-lg font-semibold text-white">
                           {request.vehicle_year} {request.vehicle_make} {request.vehicle_model}
@@ -327,7 +354,7 @@ export default function RequestsPage() {
                     </div>
 
                     {request.part_description && (
-                      <p className="text-gray-300 mb-4">{request.part_description}</p>
+                      <p className="text-gray-300 mb-3 line-clamp-2">{request.part_description}</p>
                     )}
 
                     {request.profiles && (
@@ -337,13 +364,26 @@ export default function RequestsPage() {
                     )}
                   </div>
 
-                  <button
-                    onClick={() => { setSelectedRequest(request); setQuoteModal(true); }}
-                    className="px-6 py-3 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    Send Quote
-                  </button>
+                  {/* Action Buttons */}
+                  <div className="flex flex-col gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => { setSelectedRequest(request); setQuoteModal(true); }}
+                      className="px-6 py-3 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      Send Quote
+                    </button>
+                    
+                    {/* Chat Icon - Direct link to conversation */}
+                    <button
+                      onClick={() => router.push(`/dashboard/chats?request=${request.id}`)}
+                      className="px-6 py-2.5 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-gray-300 hover:text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 border border-gray-700"
+                      title="Chat with mechanic"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Chat
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -490,6 +530,27 @@ export default function RequestsPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Image Lightbox Modal */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button 
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 p-2"
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <img 
+            src={lightboxImage} 
+            alt="Part image"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

@@ -6,6 +6,16 @@ class ApiConstants {
   // For physical devices and web, use your computer's IP:
   // static const String baseUrl = 'http://192.168.8.107:3333/api';
   
+  // Photon API (OpenStreetMap) - No API key required!
+  // Documentation: https://photon.komoot.io/
+  static const String photonBaseUrl = 'https://photon.komoot.io';
+  static const String photonSearchEndpoint = '/api/';
+  static const String photonReverseEndpoint = '/reverse';
+  
+  // Default to South Africa for address searches
+  static const double defaultLatitude = -26.2041;  // Johannesburg
+  static const double defaultLongitude = 28.0473;
+  
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 15);

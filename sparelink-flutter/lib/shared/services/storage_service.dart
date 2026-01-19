@@ -22,6 +22,8 @@ class StorageService {
   static const String _keyUserRole = 'user_role';
   static const String _keyUserName = 'user_name';
   static const String _keyUserPhone = 'user_phone';
+  static const String _keyTermsAccepted = 'terms_accepted';
+  static const String _keyTermsAcceptedDate = 'terms_accepted_date';
   
   // ============================================
   // PLATFORM-AWARE STORAGE METHODS
@@ -134,6 +136,60 @@ class StorageService {
   /// Get user phone
   Future<String?> getUserPhone() async {
     return await _read(_keyUserPhone);
+  }
+  
+  // ============================================
+  // GENERIC STORAGE METHODS (for AuthService)
+  // ============================================
+  
+  /// Save a boolean value
+  Future<void> saveBool(String key, bool value) async {
+    await _write(key, value.toString());
+  }
+  
+  /// Get a boolean value
+  Future<bool?> getBool(String key) async {
+    final value = await _read(key);
+    if (value == null) return null;
+    return value.toLowerCase() == 'true';
+  }
+  
+  /// Save a string value
+  Future<void> saveString(String key, String value) async {
+    await _write(key, value);
+  }
+  
+  /// Get a string value
+  Future<String?> getString(String key) async {
+    return await _read(key);
+  }
+  
+  /// Delete a specific key
+  Future<void> deleteKey(String key) async {
+    await _delete(key);
+  }
+  
+  // ============================================
+  // TERMS & CONDITIONS
+  // ============================================
+  
+  /// Save that user accepted terms
+  Future<void> saveTermsAccepted() async {
+    await _write(_keyTermsAccepted, 'true');
+    await _write(_keyTermsAcceptedDate, DateTime.now().toIso8601String());
+  }
+  
+  /// Check if terms were accepted
+  Future<bool> hasAcceptedTerms() async {
+    final accepted = await _read(_keyTermsAccepted);
+    return accepted == 'true';
+  }
+  
+  /// Get date when terms were accepted
+  Future<DateTime?> getTermsAcceptedDate() async {
+    final dateStr = await _read(_keyTermsAcceptedDate);
+    if (dateStr == null) return null;
+    return DateTime.tryParse(dateStr);
   }
   
   // ============================================

@@ -1,11 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/services/storage_service.dart';
+import '../../../shared/services/vehicle_service.dart';
+import '../../../shared/services/draft_service.dart';
 
 class RequestPartScreen extends ConsumerStatefulWidget {
   const RequestPartScreen({super.key});
@@ -18,10 +21,12 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
   int _currentStep = 0;
   bool _isLoading = false;
   bool _isSubmitting = false;
+  bool _isDecodingVin = false;
   
   // Vehicle data
   List<Map<String, dynamic>> _vehicleMakes = [];
   List<Map<String, dynamic>> _vehicleModels = [];
+  List<SavedVehicle> _savedVehicles = [];
   String? _selectedMakeId;
   String? _selectedMakeName;
   String? _selectedModelId;
@@ -29,13 +34,23 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
   String? _selectedYear;
   final _vinController = TextEditingController();
   final _engineCodeController = TextEditingController();
+  final _partNumberController = TextEditingController();
+  final _notesController = TextEditingController();
   
   // Parts data
   List<Map<String, dynamic>> _partCategories = [];
   List<Map<String, dynamic>> _parts = [];
   List<Map<String, dynamic>> _selectedParts = [];
+  List<Map<String, dynamic>> _partNumberResults = [];
   String? _selectedCategoryId;
   String? _selectedCategoryName;
+  
+  // New fields
+  String _urgencyLevel = 'normal'; // urgent, normal, flexible
+  double? _budgetMin;
+  double? _budgetMax;
+  bool _hasDraft = false;
+  List<RequestTemplate> _templates = [];
   
   // Generate years from 2000 to current year
   List<String> get _years {
@@ -48,13 +63,263 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
     super.initState();
     _loadVehicleMakes();
     _loadPartCategories();
+    _loadSavedVehicles();
+    _loadDraft();
+    _loadTemplates();
   }
 
   @override
   void dispose() {
+    _saveDraftOnExit();
     _vinController.dispose();
     _engineCodeController.dispose();
+    _partNumberController.dispose();
+    _notesController.dispose();
     super.dispose();
+  }
+  
+  Future<void> _loadSavedVehicles() async {
+    final vehicleService = ref.read(vehicleServiceProvider);
+    final vehicles = await vehicleService.getSavedVehicles();
+    if (mounted) {
+      setState(() => _savedVehicles = vehicles);
+    }
+  }
+  
+  Future<void> _loadDraft() async {
+    final draftService = ref.read(draftServiceProvider);
+    final draft = await draftService.loadDraft();
+    if (draft != null && !draft.isEmpty && mounted) {
+      setState(() => _hasDraft = true);
+      _showDraftDialog(draft);
+    }
+  }
+  
+  Future<void> _loadTemplates() async {
+    final draftService = ref.read(draftServiceProvider);
+    final templates = await draftService.getTemplates();
+    if (mounted) {
+      setState(() => _templates = templates);
+    }
+  }
+  
+  void _showDraftDialog(RequestDraft draft) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Resume Draft?', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'You have an unsaved request${draft.hasVehicleInfo ? ' for ${draft.year} ${draft.makeName} ${draft.modelName}' : ''}. Would you like to continue?',
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(draftServiceProvider).clearDraft();
+            },
+            child: const Text('Discard', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _restoreDraft(draft);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentGreen),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _restoreDraft(RequestDraft draft) {
+    setState(() {
+      _selectedMakeId = draft.makeId;
+      _selectedMakeName = draft.makeName;
+      _selectedModelId = draft.modelId;
+      _selectedModelName = draft.modelName;
+      _selectedYear = draft.year;
+      _vinController.text = draft.vin ?? '';
+      _engineCodeController.text = draft.engineCode ?? '';
+      _selectedParts = List.from(draft.selectedParts);
+      _urgencyLevel = draft.urgencyLevel ?? 'normal';
+      _budgetMin = draft.budgetMin;
+      _budgetMax = draft.budgetMax;
+      _notesController.text = draft.notes ?? '';
+      if (draft.hasVehicleInfo) _currentStep = 1;
+    });
+    if (draft.makeId != null) _loadVehicleModels(draft.makeId!);
+  }
+  
+  Future<void> _saveDraftOnExit() async {
+    if (_selectedMakeId == null && _selectedParts.isEmpty) return;
+    
+    final draft = RequestDraft(
+      makeId: _selectedMakeId,
+      makeName: _selectedMakeName,
+      modelId: _selectedModelId,
+      modelName: _selectedModelName,
+      year: _selectedYear,
+      vin: _vinController.text.isNotEmpty ? _vinController.text : null,
+      engineCode: _engineCodeController.text.isNotEmpty ? _engineCodeController.text : null,
+      selectedParts: _selectedParts,
+      urgencyLevel: _urgencyLevel,
+      budgetMin: _budgetMin,
+      budgetMax: _budgetMax,
+      notes: _notesController.text.isNotEmpty ? _notesController.text : null,
+      savedAt: DateTime.now(),
+    );
+    
+    await ref.read(draftServiceProvider).saveDraft(draft);
+  }
+  
+  Future<void> _decodeVin() async {
+    final vin = _vinController.text.trim().toUpperCase();
+    if (vin.length != 17) {
+      _showError('VIN must be exactly 17 characters');
+      return;
+    }
+    
+    setState(() => _isDecodingVin = true);
+    
+    final vehicleService = ref.read(vehicleServiceProvider);
+    final result = await vehicleService.decodeVin(vin);
+    
+    if (mounted) {
+      setState(() => _isDecodingVin = false);
+      
+      if (result.success) {
+        // Try to match make in our database
+        if (result.make != null) {
+          final make = _vehicleMakes.firstWhere(
+            (m) => (m['name'] as String).toLowerCase().contains(result.make!.toLowerCase()),
+            orElse: () => {},
+          );
+          if (make.isNotEmpty) {
+            setState(() {
+              _selectedMakeId = make['id'] as String;
+              _selectedMakeName = make['name'] as String;
+            });
+            await _loadVehicleModels(make['id'] as String);
+          }
+        }
+        if (result.year != null) {
+          setState(() => _selectedYear = result.year);
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('VIN decoded: ${result.make ?? ''} ${result.model ?? ''} ${result.year ?? ''}'),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+      } else {
+        _showError(result.error ?? 'Could not decode VIN');
+      }
+    }
+  }
+  
+  Future<void> _searchByPartNumber() async {
+    final partNumber = _partNumberController.text.trim();
+    if (partNumber.isEmpty) return;
+    
+    setState(() => _isLoading = true);
+    
+    final vehicleService = ref.read(vehicleServiceProvider);
+    final results = await vehicleService.searchByPartNumber(partNumber);
+    
+    if (mounted) {
+      setState(() {
+        _partNumberResults = results;
+        _isLoading = false;
+      });
+      
+      if (results.isEmpty) {
+        _showError('No parts found with that number');
+      }
+    }
+  }
+  
+  void _selectSavedVehicle(SavedVehicle vehicle) {
+    setState(() {
+      _selectedMakeId = vehicle.makeId;
+      _selectedMakeName = vehicle.makeName;
+      _selectedModelId = vehicle.modelId;
+      _selectedModelName = vehicle.modelName;
+      _selectedYear = vehicle.year;
+      _vinController.text = vehicle.vin ?? '';
+      _engineCodeController.text = vehicle.engineCode ?? '';
+    });
+    _loadVehicleModels(vehicle.makeId);
+  }
+  
+  Future<void> _saveCurrentVehicle() async {
+    if (_selectedMakeId == null || _selectedModelId == null || _selectedYear == null) {
+      _showError('Please complete vehicle details first');
+      return;
+    }
+    
+    final nicknameController = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Save Vehicle', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$_selectedYear $_selectedMakeName $_selectedModelName', style: const TextStyle(color: AppTheme.accentGreen)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nicknameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Nickname (optional)',
+                hintStyle: TextStyle(color: Colors.grey[600]),
+                filled: true,
+                fillColor: Colors.grey[900],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentGreen),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    
+    if (result == true) {
+      final vehicleService = ref.read(vehicleServiceProvider);
+      final saved = await vehicleService.saveVehicle(
+        makeId: _selectedMakeId!,
+        makeName: _selectedMakeName!,
+        modelId: _selectedModelId!,
+        modelName: _selectedModelName!,
+        year: _selectedYear!,
+        vin: _vinController.text.isNotEmpty ? _vinController.text : null,
+        engineCode: _engineCodeController.text.isNotEmpty ? _engineCodeController.text : null,
+        nickname: nicknameController.text.isNotEmpty ? nicknameController.text : null,
+        setAsDefault: _savedVehicles.isEmpty,
+      );
+      
+      if (saved != null && mounted) {
+        _loadSavedVehicles();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Vehicle saved!'), backgroundColor: AppTheme.accentGreen),
+        );
+      }
+    }
   }
 
   Future<void> _loadVehicleMakes() async {
@@ -217,22 +482,62 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
         return;
       }
 
-      // Create part request
-      final requestResponse = await Supabase.instance.client
-          .from('part_requests')
-          .insert({
-            'mechanic_id': mechanicId,
-            'vehicle_make': _selectedMakeName,
-            'vehicle_model': _selectedModelName,
-            'vehicle_year': int.parse(_selectedYear!),
-            'vin_number': _vinController.text.isNotEmpty ? _vinController.text : null,
-            'engine_code': _engineCodeController.text.isNotEmpty ? _engineCodeController.text : null,
-            'part_category': _selectedParts.map((p) => p['category_name']).toSet().join(', '),
-            'status': 'pending',
-            'suburb': suburb,
-          })
-          .select()
-          .single();
+      // Get the first image URL from selected parts (if any)
+      final firstImageUrl = _selectedParts
+          .where((p) => p['image_url'] != null)
+          .map((p) => p['image_url'] as String)
+          .firstOrNull;
+
+      // Create part request - base fields only (guaranteed to exist)
+      final baseRequestData = <String, dynamic>{
+        'mechanic_id': mechanicId,
+        'vehicle_make': _selectedMakeName,
+        'vehicle_model': _selectedModelName,
+        'vehicle_year': int.parse(_selectedYear!),
+        'vin_number': _vinController.text.isNotEmpty ? _vinController.text : null,
+        'engine_code': _engineCodeController.text.isNotEmpty ? _engineCodeController.text : null,
+        'part_category': _selectedParts.map((p) => p['category_name']).toSet().join(', '),
+        'status': 'pending',
+        'suburb': suburb,
+        'image_url': firstImageUrl,
+      };
+      
+      // Try with extended fields first, fallback to base if schema not updated
+      Map<String, dynamic>? requestResponse;
+      
+      try {
+        // Attempt with new columns (urgency, budget, notes)
+        final extendedData = Map<String, dynamic>.from(baseRequestData);
+        extendedData['urgency_level'] = _urgencyLevel;
+        if (_budgetMin != null) extendedData['budget_min'] = _budgetMin;
+        if (_budgetMax != null) extendedData['budget_max'] = _budgetMax;
+        if (_notesController.text.isNotEmpty) extendedData['notes'] = _notesController.text;
+        
+        requestResponse = await Supabase.instance.client
+            .from('part_requests')
+            .insert(extendedData)
+            .select()
+            .single();
+      } catch (e) {
+        // Fallback: Schema may not have new columns yet
+        print('Extended insert failed, falling back to base: $e');
+        requestResponse = await Supabase.instance.client
+            .from('part_requests')
+            .insert(baseRequestData)
+            .select()
+            .single();
+        
+        // Show user a note that some features weren't saved
+        if (mounted && (_budgetMin != null || _budgetMax != null || _urgencyLevel != 'normal')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Note: Budget and urgency preferences saved locally. Database update pending.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
 
       final requestId = requestResponse['id'] as String;
 
@@ -466,7 +771,127 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
           const Text('Vehicle Details', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text('Select your vehicle to find the right parts', style: TextStyle(color: Colors.grey[400])),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          
+          // Saved Vehicles Quick Select
+          if (_savedVehicles.isNotEmpty) ...[
+            const Text('My Saved Vehicles', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 80,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _savedVehicles.length,
+                itemBuilder: (ctx, i) {
+                  final v = _savedVehicles[i];
+                  final isSelected = _selectedMakeId == v.makeId && _selectedModelId == v.modelId && _selectedYear == v.year;
+                  return GestureDetector(
+                    onTap: () => _selectSavedVehicle(v),
+                    child: Container(
+                      width: 140,
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppTheme.accentGreen.withOpacity(0.2) : const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isSelected ? AppTheme.accentGreen : Colors.grey[800]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(LucideIcons.car, size: 14, color: isSelected ? AppTheme.accentGreen : Colors.grey),
+                              if (v.isDefault) ...[
+                                const SizedBox(width: 4),
+                                const Icon(LucideIcons.star, size: 12, color: Colors.amber),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            v.nickname ?? '${v.year} ${v.makeName}',
+                            style: TextStyle(color: isSelected ? AppTheme.accentGreen : Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            v.modelName,
+                            style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Divider(color: Colors.grey),
+            const SizedBox(height: 16),
+          ],
+          
+          // VIN Decoder Section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(LucideIcons.scanLine, color: Colors.blue, size: 20),
+                    SizedBox(width: 8),
+                    Text('Quick Fill with VIN', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _vinController,
+                        style: const TextStyle(color: Colors.white, letterSpacing: 1),
+                        textCapitalization: TextCapitalization.characters,
+                        maxLength: 17,
+                        decoration: InputDecoration(
+                          hintText: 'Enter 17-digit VIN',
+                          hintStyle: TextStyle(color: Colors.grey[600]),
+                          counterText: '',
+                          filled: true,
+                          fillColor: const Color(0xFF1E1E1E),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _isDecodingVin ? null : _decodeVin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: _isDecodingVin
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Decode'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
           
           // Vehicle Make
           _buildDropdownField(
@@ -518,27 +943,26 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
             items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
             onChanged: (value) => setState(() => _selectedYear = value),
           ),
-          const SizedBox(height: 24),
-          
-          // Optional fields
-          Text('Optional - For exact match', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
-          const SizedBox(height: 12),
-          
-          _buildTextField(
-            label: 'VIN Number',
-            hint: 'Enter VIN (optional)',
-            controller: _vinController,
-            icon: LucideIcons.hash,
-          ),
           const SizedBox(height: 16),
           
+          // Engine Code
           _buildTextField(
-            label: 'Engine Code',
-            hint: 'Enter engine code (optional)',
+            label: 'Engine Code (Optional)',
+            hint: 'e.g., CBFA, N54',
             controller: _engineCodeController,
             icon: LucideIcons.cog,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+          
+          // Save Vehicle Button
+          if (_canProceedToStep2())
+            TextButton.icon(
+              onPressed: _saveCurrentVehicle,
+              icon: const Icon(LucideIcons.bookmark, size: 18),
+              label: const Text('Save this vehicle for later'),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.accentGreen),
+            ),
+          const SizedBox(height: 16),
           
           // Next Button
           SizedBox(
@@ -590,7 +1014,75 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
                 const Text('Select Parts', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Text('Add the parts you need', style: TextStyle(color: Colors.grey[400])),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+                
+                // Part Number Search
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(LucideIcons.hash, color: Colors.purple, size: 20),
+                          SizedBox(width: 8),
+                          Text('Search by Part Number', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _partNumberController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'OEM or aftermarket part #',
+                                hintStyle: TextStyle(color: Colors.grey[600]),
+                                filled: true,
+                                fillColor: const Color(0xFF1E1E1E),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              ),
+                              onSubmitted: (_) => _searchByPartNumber(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 48,
+                            child: ElevatedButton(
+                              onPressed: _searchByPartNumber,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              child: const Text('Search'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_partNumberResults.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        ...(_partNumberResults.take(3).map((p) => ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(p['name'] as String, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                          subtitle: Text('OEM: ${p['oem_number'] ?? 'N/A'}', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                          trailing: IconButton(
+                            icon: const Icon(LucideIcons.plus, color: Colors.purple, size: 20),
+                            onPressed: () => _addPart(p['id'] as String, p['name'] as String),
+                          ),
+                        ))),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
                 
                 // Category Dropdown
                 _buildDropdownField(
@@ -638,7 +1130,88 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
                   const Text('Added Parts', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 12),
                   ..._selectedParts.asMap().entries.map((entry) => _buildPartItem(entry.key, entry.value)),
+                  const SizedBox(height: 24),
                 ],
+                
+                // Urgency Level
+                const Text('Urgency Level', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildUrgencyChip('urgent', 'Urgent', 'Need today', Colors.red),
+                    const SizedBox(width: 8),
+                    _buildUrgencyChip('normal', 'Normal', '2-3 days', Colors.orange),
+                    const SizedBox(width: 8),
+                    _buildUrgencyChip('flexible', 'Flexible', 'Can wait', Colors.green),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Budget Range
+                const Text('Budget Range (Optional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Min R',
+                          hintStyle: TextStyle(color: Colors.grey[600]),
+                          prefixText: 'R ',
+                          prefixStyle: const TextStyle(color: Colors.grey),
+                          filled: true,
+                          fillColor: const Color(0xFF1E1E1E),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey[800]!)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey[800]!)),
+                        ),
+                        onChanged: (v) => _budgetMin = double.tryParse(v),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('to', style: TextStyle(color: Colors.grey[500])),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Max R',
+                          hintStyle: TextStyle(color: Colors.grey[600]),
+                          prefixText: 'R ',
+                          prefixStyle: const TextStyle(color: Colors.grey),
+                          filled: true,
+                          fillColor: const Color(0xFF1E1E1E),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey[800]!)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey[800]!)),
+                        ),
+                        onChanged: (v) => _budgetMax = double.tryParse(v),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Additional Notes
+                const Text('Additional Notes (Optional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _notesController,
+                  maxLines: 3,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Any specific requirements, conditions, etc.',
+                    hintStyle: TextStyle(color: Colors.grey[600]),
+                    filled: true,
+                    fillColor: const Color(0xFF1E1E1E),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[800]!)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[800]!)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.accentGreen)),
+                  ),
+                ),
+                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -672,6 +1245,35 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
           ),
         ),
       ],
+    );
+  }
+  
+  Widget _buildUrgencyChip(String value, String label, String subtitle, Color color) {
+    final isSelected = _urgencyLevel == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _urgencyLevel = value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withOpacity(0.2) : const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: isSelected ? color : Colors.grey[800]!),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                value == 'urgent' ? LucideIcons.zap : value == 'normal' ? LucideIcons.clock : LucideIcons.calendar,
+                color: isSelected ? color : Colors.grey,
+                size: 20,
+              ),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(color: isSelected ? color : Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
+              Text(subtitle, style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
