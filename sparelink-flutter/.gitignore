@@ -92,8 +92,8 @@ app.*.map.json
 # Shop dashboard environment
 shop-dashboard/.env*
 
-# Web build output (regenerated on deploy)
-build/web/
+# Web build output - INCLUDED for Vercel deployment
+# build/web/
 
 # Vercel
 .vercel
