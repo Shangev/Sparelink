@@ -6,6 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/services/storage_service.dart';
+import '../../../core/theme/app_theme.dart';
+import 'chat_detail_panel.dart';
+import 'chat_providers.dart';
 
 /// Chats Screen - List of chat conversations
 /// Clean dark-mode design with search, avatars, shop names, online status, and message previews
@@ -388,8 +391,22 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     super.dispose();
   }
 
+  // Desktop breakpoint
+  static const double _desktopBreakpoint = 900;
+
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= _desktopBreakpoint;
+    
+    if (isDesktop) {
+      return _buildDesktopLayout(context);
+    }
+    return _buildMobileLayout(context);
+  }
+  
+  /// Mobile layout - original single-column view with bottom nav
+  Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: _backgroundColor,
       body: SafeArea(
@@ -416,13 +433,102 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
             
             // Chat list
             Expanded(
-              child: _buildChatList(),
+              child: _buildChatList(isDesktop: false),
             ),
           ],
         ),
       ),
       // Bottom Navigation Bar
       bottomNavigationBar: _buildBottomNavBar(),
+    );
+  }
+  
+  /// Desktop layout - master-detail view with chat list on left, messages on right
+  Widget _buildDesktopLayout(BuildContext context) {
+    final selectedChat = ref.watch(selectedChatProvider);
+    
+    return Scaffold(
+      backgroundColor: _backgroundColor,
+      body: Row(
+        children: [
+          // Left pane: Chat list (30% width, min 320px)
+          Container(
+            width: 360,
+            decoration: BoxDecoration(
+              color: _backgroundColor,
+              border: Border(
+                right: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+              ),
+            ),
+            child: Column(
+              children: [
+                // Desktop header
+                _buildDesktopHeader(),
+                
+                // Search bar
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildSearchBar(),
+                ),
+                
+                // Chat list
+                Expanded(
+                  child: _buildChatList(isDesktop: true),
+                ),
+              ],
+            ),
+          ),
+          
+          // Right pane: Chat detail (70% width)
+          Expanded(
+            child: selectedChat != null
+                ? ChatDetailPanel(
+                    key: ValueKey(selectedChat['id']),
+                    chatData: selectedChat,
+                  )
+                : const ChatEmptyState(),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Desktop header - simpler, no back button
+  Widget _buildDesktopHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _cardBackground,
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Chats',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          // Notification icon with hover effect
+          _DesktopIconButton(
+            icon: LucideIcons.bell,
+            onTap: () => context.push('/notifications'),
+            tooltip: 'Notifications',
+          ),
+          const SizedBox(width: 8),
+          // New chat icon
+          _DesktopIconButton(
+            icon: LucideIcons.squarePen,
+            onTap: () => context.push('/request-part'),
+            tooltip: 'New Request',
+          ),
+        ],
+      ),
     );
   }
 
@@ -495,7 +601,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     );
   }
 
-  Widget _buildChatList() {
+  Widget _buildChatList({required bool isDesktop}) {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: Colors.white),
@@ -552,6 +658,8 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
       );
     }
 
+    final selectedChat = ref.watch(selectedChatProvider);
+
     return RefreshIndicator(
       onRefresh: _loadConversations,
       child: ListView.builder(
@@ -563,6 +671,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           final lastMessage = _getLastMessage(chat);
           
           final unreadCount = chat['unread_count'] as int? ?? 0;
+          final isSelected = isDesktop && selectedChat?['id'] == chat['id'];
           
           return _ChatCard(
             chat: {
@@ -576,20 +685,20 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
               'last_message_is_mine': chat['last_message_is_mine'] ?? false,
               'last_message_is_read': chat['last_message_is_read'] ?? false,
             },
+            isSelected: isSelected,
+            isDesktop: isDesktop,
             onTap: () async {
               // CRITICAL: Mark messages as read IMMEDIATELY on tap (before navigation)
               // This clears the unread badge instantly
               await _markChatAsRead(chat);
               
-              // Navigate to chat screen - pass FULL chat data including conversation info
-              if (mounted) {
-                debugPrint('🚀 [ChatsScreen] Navigating to chat with data: ${chat.keys.toList()}');
-                await context.push('/chat/${chat['id']}', extra: {
+              if (isDesktop) {
+                // Desktop: Update provider to show chat in right pane (no navigation)
+                ref.read(selectedChatProvider.notifier).state = {
                   'id': chat['id'],
                   'name': shopName,
                   'avatarColor': _getAvatarColor(index),
                   'conversation': chat,
-                  // Pass these explicitly so IndividualChatScreen can find/create conversation
                   'type': chat['type'],
                   'request_id': chat['request_id'],
                   'shop_id': chat['shop_id'] ?? chat['shops']?['id'],
@@ -598,12 +707,30 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
                   'status': chat['status'],
                   'quote_amount': chat['quote_amount'],
                   'delivery_fee': chat['delivery_fee'],
-                });
-                
-                // CACHE INVALIDATION: Force refresh when returning from chat
-                // This ensures any new messages or state changes are reflected
+                };
+              } else {
+                // Mobile: Navigate to chat screen
                 if (mounted) {
-                  _loadConversations();
+                  debugPrint('🚀 [ChatsScreen] Navigating to chat with data: ${chat.keys.toList()}');
+                  await context.push('/chat/${chat['id']}', extra: {
+                    'id': chat['id'],
+                    'name': shopName,
+                    'avatarColor': _getAvatarColor(index),
+                    'conversation': chat,
+                    'type': chat['type'],
+                    'request_id': chat['request_id'],
+                    'shop_id': chat['shop_id'] ?? chat['shops']?['id'],
+                    'shops': chat['shops'],
+                    'part_requests': chat['part_requests'],
+                    'status': chat['status'],
+                    'quote_amount': chat['quote_amount'],
+                    'delivery_fee': chat['delivery_fee'],
+                  });
+                  
+                  // CACHE INVALIDATION: Force refresh when returning from chat
+                  if (mounted) {
+                    _loadConversations();
+                  }
                 }
               }
             },
@@ -687,11 +814,61 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   }
 }
 
-/// Chat Card Widget - WhatsApp-style design
+/// Desktop icon button with hover effect
+class _DesktopIconButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+
+  const _DesktopIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  @override
+  State<_DesktopIconButton> createState() => _DesktopIconButtonState();
+}
+
+class _DesktopIconButtonState extends State<_DesktopIconButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _isHovered ? Colors.white.withOpacity(0.1) : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              widget.icon,
+              color: _isHovered ? Colors.white : const Color(0xFFB0B0B0),
+              size: 22,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Chat Card Widget - WhatsApp-style design with desktop hover support
 /// Layout: [Avatar] [Name + Message Preview] [Timestamp + Status Ticks]
-class _ChatCard extends StatelessWidget {
+class _ChatCard extends StatefulWidget {
   final Map<String, dynamic> chat;
   final VoidCallback onTap;
+  final bool isSelected;
+  final bool isDesktop;
 
   static const Color _cardBackground = Color(0xFF1E1E1E);
   static const Color _subtitleGray = Color(0xFFB0B0B0);
@@ -701,7 +878,23 @@ class _ChatCard extends StatelessWidget {
   const _ChatCard({
     required this.chat,
     required this.onTap,
+    this.isSelected = false,
+    this.isDesktop = false,
   });
+
+  @override
+  State<_ChatCard> createState() => _ChatCardState();
+}
+
+class _ChatCardState extends State<_ChatCard> {
+  bool _isHovered = false;
+
+  static const Color _cardBackground = Color(0xFF1E1E1E);
+  static const Color _subtitleGray = Color(0xFFB0B0B0);
+  static const Color _tickGray = Color(0xFF8E8E8E);
+  static const Color _tickBlue = Color(0xFF53BDEB);
+  static const Color _selectedBackground = Color(0xFF2A3A2A);
+  static const Color _hoverBackground = Color(0xFF252525);
 
   String _formatTimestamp(String? timestamp) {
     if (timestamp == null) return '';
@@ -733,8 +926,8 @@ class _ChatCard extends StatelessWidget {
   /// - Double grey tick: Delivered (is_read = false)
   /// - Double blue tick: Seen (is_read = true)
   Widget _buildStatusTicks() {
-    final isFromCurrentUser = chat['last_message_is_mine'] as bool? ?? false;
-    final isRead = chat['last_message_is_read'] as bool? ?? false;
+    final isFromCurrentUser = widget.chat['last_message_is_mine'] as bool? ?? false;
+    final isRead = widget.chat['last_message_is_read'] as bool? ?? false;
     
     // Only show ticks for messages sent by current user
     if (!isFromCurrentUser) {
@@ -743,7 +936,7 @@ class _ChatCard extends StatelessWidget {
     
     if (isRead) {
       // Double blue ticks - Seen
-      return Row(
+      return const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(LucideIcons.checkCheck, size: 16, color: _tickBlue),
@@ -751,7 +944,7 @@ class _ChatCard extends StatelessWidget {
       );
     } else {
       // Double grey ticks - Delivered/Received
-      return Row(
+      return const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(LucideIcons.checkCheck, size: 16, color: _tickGray),
@@ -759,125 +952,140 @@ class _ChatCard extends StatelessWidget {
       );
     }
   }
+  
+  Color _getBackgroundColor() {
+    if (widget.isSelected) return _selectedBackground;
+    if (_isHovered && widget.isDesktop) return _hoverBackground;
+    return _cardBackground;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = chat['unread_count'] as int? ?? 0;
+    final unreadCount = widget.chat['unread_count'] as int? ?? 0;
     final hasUnread = unreadCount > 0;
-    final timestamp = chat['last_message_at'] as String?;
-    final preview = chat['preview'] as String? ?? 'No messages yet';
+    final timestamp = widget.chat['last_message_at'] as String?;
+    final preview = widget.chat['preview'] as String? ?? 'No messages yet';
     
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        decoration: BoxDecoration(
-          color: _cardBackground,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            // Far Left: Avatar
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: chat['avatarColor'] as Color,
-              child: Text(
-                (chat['name'] as String).isNotEmpty 
-                    ? (chat['name'] as String).split(' ').last[0].toUpperCase()
-                    : '?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            color: _getBackgroundColor(),
+            borderRadius: BorderRadius.circular(12),
+            border: widget.isSelected 
+                ? Border.all(color: AppTheme.accentGreen.withOpacity(0.5), width: 1)
+                : null,
+          ),
+          child: Row(
+            children: [
+              // Far Left: Avatar
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: widget.chat['avatarColor'] as Color,
+                child: Text(
+                  (widget.chat['name'] as String).isNotEmpty 
+                      ? (widget.chat['name'] as String).split(' ').last[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 14),
-            
-            // Middle: Name (top) + Message Preview (bottom)
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 14),
+              
+              // Middle: Name (top) + Message Preview (bottom)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Name
+                    Text(
+                      widget.chat['name'] as String,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // Message preview with status tick
+                    Row(
+                      children: [
+                        // Status ticks for own messages
+                        _buildStatusTicks(),
+                        if (widget.chat['last_message_is_mine'] == true)
+                          const SizedBox(width: 4),
+                        // Preview text
+                        Expanded(
+                          child: Text(
+                            preview,
+                            style: TextStyle(
+                              color: hasUnread ? Colors.white : _subtitleGray,
+                              fontSize: 14,
+                              fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(width: 10),
+              
+              // Far Right: Timestamp (top) + Unread Badge (bottom)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Name
+                  // Timestamp
                   Text(
-                    chat['name'] as String,
+                    _formatTimestamp(timestamp),
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+                      color: hasUnread ? Colors.green : _subtitleGray,
+                      fontSize: 12,
+                      fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
-                  // Message preview with status tick
-                  Row(
-                    children: [
-                      // Status ticks for own messages
-                      _buildStatusTicks(),
-                      if (chat['last_message_is_mine'] == true)
-                        const SizedBox(width: 4),
-                      // Preview text
-                      Expanded(
-                        child: Text(
-                          preview,
-                          style: TextStyle(
-                            color: hasUnread ? Colors.white : _subtitleGray,
-                            fontSize: 14,
-                            fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 6),
+                  // Unread badge or empty space
+                  if (hasUnread)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
+                    )
+                  else
+                    const SizedBox(height: 20), // Maintain spacing when no badge
                 ],
               ),
-            ),
-            
-            const SizedBox(width: 10),
-            
-            // Far Right: Timestamp (top) + Unread Badge (bottom)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Timestamp
-                Text(
-                  _formatTimestamp(timestamp),
-                  style: TextStyle(
-                    color: hasUnread ? Colors.green : _subtitleGray,
-                    fontSize: 12,
-                    fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                // Unread badge or empty space
-                if (hasUnread)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      unreadCount > 99 ? '99+' : '$unreadCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  )
-                else
-                  const SizedBox(height: 20), // Maintain spacing when no badge
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
