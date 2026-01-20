@@ -24,14 +24,24 @@ class AuthResponsiveLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get screen width directly from MediaQuery for reliable breakpoint detection
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= mobileBreakpoint;
+    final isLargeDesktop = screenWidth >= desktopBreakpoint;
+    
     return Scaffold(
       appBar: showBackButton || title != null
           ? AppBar(
               title: title != null ? Text(title!) : null,
               automaticallyImplyLeading: showBackButton,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
             )
           : null,
+      extendBodyBehindAppBar: true,
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -40,20 +50,11 @@ class AuthResponsiveLayout extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktop = constraints.maxWidth >= mobileBreakpoint;
-              final isLargeDesktop = constraints.maxWidth >= desktopBreakpoint;
-              
-              if (isLargeDesktop) {
-                return _buildLargeDesktopLayout(context, constraints);
-              } else if (isDesktop) {
-                return _buildDesktopLayout(context, constraints);
-              } else {
-                return _buildMobileLayout(context);
-              }
-            },
-          ),
+          child: isLargeDesktop
+              ? _buildLargeDesktopLayout(context, screenWidth)
+              : isDesktop
+                  ? _buildDesktopLayout(context, screenWidth)
+                  : _buildMobileLayout(context),
         ),
       ),
     );
@@ -68,12 +69,13 @@ class AuthResponsiveLayout extends StatelessWidget {
   }
 
   /// Desktop layout: Centered card with constrained width
-  Widget _buildDesktopLayout(BuildContext context, BoxConstraints constraints) {
+  Widget _buildDesktopLayout(BuildContext context, double screenWidth) {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-        child: SizedBox(
+        child: Container(
           width: maxFormWidth,
+          constraints: const BoxConstraints(maxWidth: maxFormWidth),
           child: child,
         ),
       ),
@@ -81,7 +83,7 @@ class AuthResponsiveLayout extends StatelessWidget {
   }
 
   /// Large desktop layout: Split view with branding panel and form
-  Widget _buildLargeDesktopLayout(BuildContext context, BoxConstraints constraints) {
+  Widget _buildLargeDesktopLayout(BuildContext context, double screenWidth) {
     return Row(
       children: [
         // Left side: Branding panel
@@ -97,8 +99,9 @@ class AuthResponsiveLayout extends StatelessWidget {
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 48),
-                child: SizedBox(
+                child: Container(
                   width: maxFormWidth,
+                  constraints: const BoxConstraints(maxWidth: maxFormWidth),
                   child: child,
                 ),
               ),
