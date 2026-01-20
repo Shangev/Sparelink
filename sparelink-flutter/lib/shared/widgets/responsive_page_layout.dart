@@ -93,17 +93,18 @@ class ResponsivePageLayout extends StatelessWidget {
   }
 
   Widget _buildDesktopLayout(BuildContext context) {
-    final content = Container(
-      width: maxWidth,
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: child,
-    );
-
-    return SingleChildScrollView(
-      padding: padding ?? const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
-      child: centerContent
-          ? Center(child: content)
-          : content,
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SingleChildScrollView(
+        padding: padding ?? const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: maxWidth,
+            minWidth: 0,
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../shared/models/marketplace.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
+import '../../../shared/widgets/responsive_page_layout.dart';
 
 /// My Requests Screen
 /// Clean dark-mode list view of requests with thumbnails, titles, shop details, and status badges
@@ -701,53 +702,110 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
   }
 
   Widget _buildRequestsList() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+    
+    // Calculate grid columns based on screen width
+    int crossAxisCount = 1;
+    if (screenWidth >= 1400) {
+      crossAxisCount = 4;
+    } else if (screenWidth >= 1100) {
+      crossAxisCount = 3;
+    } else if (screenWidth >= 900) {
+      crossAxisCount = 2;
+    }
+    
     return RefreshIndicator(
       onRefresh: _loadRequests,
       color: Colors.white,
       backgroundColor: _cardBackground,
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _filteredRequests.length,
-        itemBuilder: (context, index) {
-          final request = _filteredRequests[index];
-          final isSelected = _selectedIds.contains(request.id);
-          final canSelect = request.status == RequestStatus.pending || request.status == RequestStatus.offered;
-          
-          return _RequestCard(
-            request: request,
-            isSelectionMode: _isSelectionMode,
-            isSelected: isSelected,
-            onTap: () {
-              if (_isSelectionMode && canSelect) {
-                _toggleSelection(request.id);
-              } else {
-                // Navigate based on status
-                switch (request.status) {
-                  case RequestStatus.pending:
-                  case RequestStatus.offered:
-                    context.push('/marketplace/${request.id}');
-                    break;
-                  case RequestStatus.accepted:
-                  case RequestStatus.fulfilled:
-                  case RequestStatus.cancelled:
-                  case RequestStatus.expired:
-                    context.push('/request/${request.id}');
-                    break;
-                }
-              }
-            },
-            onLongPress: canSelect ? () {
-              if (!_isSelectionMode) {
-                _toggleSelectionMode();
-              }
-              _toggleSelection(request.id);
-            } : null,
-            onDuplicate: () => _duplicateRequest(request),
-            onEdit: request.status == RequestStatus.pending ? () => _editRequest(request) : null,
-          );
-        },
+      child: isDesktop
+          ? _buildGridView(crossAxisCount)
+          : _buildListView(),
+    );
+  }
+  
+  Widget _buildListView() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: _filteredRequests.length,
+      itemBuilder: (context, index) => _buildRequestCard(_filteredRequests[index]),
+    );
+  }
+  
+  Widget _buildGridView(int crossAxisCount) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1400),
+        child: GridView.builder(
+          padding: const EdgeInsets.all(24),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 1.4, // Wider cards for desktop
+          ),
+          itemCount: _filteredRequests.length,
+          itemBuilder: (context, index) => _buildRequestGridCard(_filteredRequests[index]),
+        ),
       ),
     );
+  }
+  
+  Widget _buildRequestCard(PartRequest request) {
+    final isSelected = _selectedIds.contains(request.id);
+    final canSelect = request.status == RequestStatus.pending || request.status == RequestStatus.offered;
+    
+    return _RequestCard(
+      request: request,
+      isSelectionMode: _isSelectionMode,
+      isSelected: isSelected,
+      onTap: () => _handleRequestTap(request, canSelect),
+      onLongPress: canSelect ? () {
+        if (!_isSelectionMode) _toggleSelectionMode();
+        _toggleSelection(request.id);
+      } : null,
+      onDuplicate: () => _duplicateRequest(request),
+      onEdit: request.status == RequestStatus.pending ? () => _editRequest(request) : null,
+    );
+  }
+  
+  Widget _buildRequestGridCard(PartRequest request) {
+    final isSelected = _selectedIds.contains(request.id);
+    final canSelect = request.status == RequestStatus.pending || request.status == RequestStatus.offered;
+    
+    return _RequestGridCard(
+      request: request,
+      isSelectionMode: _isSelectionMode,
+      isSelected: isSelected,
+      onTap: () => _handleRequestTap(request, canSelect),
+      onLongPress: canSelect ? () {
+        if (!_isSelectionMode) _toggleSelectionMode();
+        _toggleSelection(request.id);
+      } : null,
+      onDuplicate: () => _duplicateRequest(request),
+      onEdit: request.status == RequestStatus.pending ? () => _editRequest(request) : null,
+    );
+  }
+  
+  void _handleRequestTap(PartRequest request, bool canSelect) {
+    if (_isSelectionMode && canSelect) {
+      _toggleSelection(request.id);
+    } else {
+      switch (request.status) {
+        case RequestStatus.pending:
+        case RequestStatus.offered:
+          context.push('/marketplace/${request.id}');
+          break;
+        case RequestStatus.accepted:
+        case RequestStatus.fulfilled:
+        case RequestStatus.cancelled:
+        case RequestStatus.expired:
+          context.push('/request/${request.id}');
+          break;
+      }
+    }
   }
   
   // Edit request - navigate to request part screen with existing data
@@ -1027,5 +1085,241 @@ class _RequestCard extends StatelessWidget {
         size: 24,
       ),
     );
+  }
+}
+
+/// Desktop Grid Card Widget - optimized for grid layout
+class _RequestGridCard extends StatefulWidget {
+  final PartRequest request;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onDuplicate;
+  final VoidCallback? onEdit;
+  final bool isSelectionMode;
+  final bool isSelected;
+
+  const _RequestGridCard({
+    required this.request,
+    required this.onTap,
+    this.onLongPress,
+    this.onDuplicate,
+    this.onEdit,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+  });
+
+  @override
+  State<_RequestGridCard> createState() => _RequestGridCardState();
+}
+
+class _RequestGridCardState extends State<_RequestGridCard> {
+  bool _isHovered = false;
+  
+  static const Color _cardBackground = Color(0xFF1E1E1E);
+  static const Color _hoverBackground = Color(0xFF252525);
+  static const Color _badgeBackground = Color(0xFF333333);
+  static const Color _subtitleGray = Color(0xFFB0B0B0);
+  static const Color _accentGreen = Color(0xFF00E676);
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            color: widget.isSelected 
+                ? _accentGreen.withOpacity(0.15) 
+                : _isHovered 
+                    ? _hoverBackground 
+                    : _cardBackground,
+            borderRadius: BorderRadius.circular(16),
+            border: widget.isSelected 
+                ? Border.all(color: _accentGreen, width: 2) 
+                : Border.all(color: _isHovered ? Colors.white24 : Colors.transparent),
+            boxShadow: _isHovered ? [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ] : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Image section (top half)
+              Expanded(
+                flex: 3,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      child: Container(
+                        width: double.infinity,
+                        color: const Color(0xFF2A2A2A),
+                        child: widget.request.imageUrl != null && widget.request.imageUrl!.isNotEmpty
+                            ? Image.network(
+                                widget.request.imageUrl!,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white.withOpacity(0.5),
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+                              )
+                            : _buildPlaceholder(),
+                      ),
+                    ),
+                    // Status badge (top right)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(widget.request.status),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          widget.request.statusLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Selection checkbox (top left)
+                    if (widget.isSelectionMode)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: widget.isSelected ? _accentGreen : Colors.black54,
+                            border: Border.all(
+                              color: widget.isSelected ? _accentGreen : Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                          child: widget.isSelected
+                              ? const Icon(LucideIcons.check, color: Colors.black, size: 14)
+                              : null,
+                        ),
+                      ),
+                    // Hover actions (bottom right)
+                    if (_isHovered && !widget.isSelectionMode)
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Row(
+                          children: [
+                            if (widget.onEdit != null)
+                              _buildActionButton(LucideIcons.pencil, 'Edit', widget.onEdit!),
+                            const SizedBox(width: 4),
+                            _buildActionButton(LucideIcons.copy, 'Duplicate', widget.onDuplicate ?? () {}),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Info section (bottom half)
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.request.partName ?? 'Part Request',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.request.vehicleDisplay,
+                        style: const TextStyle(color: _subtitleGray, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Spacer(),
+                      Text(
+                        widget.request.timeAgo,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildActionButton(IconData icon, String tooltip, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(icon, color: Colors.white, size: 14),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPlaceholder() {
+    return const Center(
+      child: Icon(LucideIcons.image, color: _subtitleGray, size: 40),
+    );
+  }
+  
+  Color _getStatusColor(RequestStatus status) {
+    switch (status) {
+      case RequestStatus.offered:
+        return const Color(0xFF00C853);
+      case RequestStatus.accepted:
+        return const Color(0xFF2196F3);
+      case RequestStatus.fulfilled:
+        return const Color(0xFF9C27B0);
+      case RequestStatus.cancelled:
+        return Colors.red;
+      case RequestStatus.expired:
+        return Colors.orange;
+      case RequestStatus.pending:
+      default:
+        return _badgeBackground;
+    }
   }
 }
