@@ -8,6 +8,7 @@ import '../../../../shared/services/supabase_service.dart';
 import '../../../../shared/services/storage_service.dart';
 import '../../../../shared/services/auth_service.dart';
 import '../../../../shared/widgets/terms_conditions_checkbox.dart';
+import '../widgets/auth_responsive_layout.dart';
 
 /// Registration method enum
 enum RegisterMethod { phone, email }
@@ -262,33 +263,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppTheme.primaryBlack, AppTheme.darkGray],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildMethodTabs(),
-                  const SizedBox(height: 24),
-                  _buildRegistrationCard(),
-                  const SizedBox(height: 24),
-                  _buildLoginLink(),
-                ],
-              ),
-            ),
-          ),
+    return AuthResponsiveLayout(
+      showBackButton: true,
+      title: 'Create Account',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildMethodTabs(),
+            const SizedBox(height: 24),
+            _buildRegistrationCard(),
+            const SizedBox(height: 24),
+            _buildLoginLink(),
+          ],
         ),
       ),
     );

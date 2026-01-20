@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/services/auth_service.dart';
+import '../widgets/auth_responsive_layout.dart';
 
 /// Forgot Password Screen
 /// 
@@ -74,58 +75,40 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reset Password'),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppTheme.primaryBlack,
-              AppTheme.darkGray,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 40),
-                  
-                  // Icon
-                  const Icon(
-                    Icons.lock_reset,
-                    size: 80,
-                    color: AppTheme.accentGreen,
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Glass Card
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        decoration: AppTheme.glassDecoration(borderRadius: 20),
-                        padding: const EdgeInsets.all(24),
-                        child: _emailSent 
-                            ? _buildSuccessContent()
-                            : _buildFormContent(),
-                      ),
-                    ),
-                  ),
-                ],
+    return AuthResponsiveLayout(
+      showBackButton: true,
+      title: 'Reset Password',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 40),
+            
+            // Icon
+            const Icon(
+              Icons.lock_reset,
+              size: 80,
+              color: AppTheme.accentGreen,
+            ),
+            
+            const SizedBox(height: 24),
+            
+            // Glass Card
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  decoration: AppTheme.glassDecoration(borderRadius: 20),
+                  padding: const EdgeInsets.all(24),
+                  child: _emailSent 
+                      ? _buildSuccessContent()
+                      : _buildFormContent(),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

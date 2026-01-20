@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../widgets/auth_responsive_layout.dart';
 import '../../../../core/constants/environment_config.dart';
 import '../../../../shared/services/supabase_service.dart';
 import '../../../../shared/services/storage_service.dart';
@@ -289,35 +290,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppTheme.primaryBlack, AppTheme.darkGray],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 40),
-                  _buildHeader(),
-                  const SizedBox(height: 40),
-                  _buildLoginMethodTabs(),
-                  const SizedBox(height: 24),
-                  _buildLoginCard(),
-                  const SizedBox(height: 24),
-                  _buildRegisterLink(),
-                ],
-              ),
-            ),
-          ),
+    return AuthResponsiveLayout(
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 40),
+            _buildHeader(),
+            const SizedBox(height: 40),
+            _buildLoginMethodTabs(),
+            const SizedBox(height: 24),
+            _buildLoginCard(),
+            const SizedBox(height: 24),
+            _buildRegisterLink(),
+          ],
         ),
       ),
     );
