@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/services/storage_service.dart';
+import '../../../shared/widgets/responsive_page_layout.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -182,245 +183,257 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: Stack(
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+    
+    return ResponsivePageLayout(
+      maxWidth: ResponsivePageLayout.mediumWidth,
+      title: 'Profile',
+      showBackButton: !isDesktop, // Only show back button on mobile
+      child: Column(
         children: [
-          // Background gradient
+          const SizedBox(height: 20),
+          
+          // Profile Avatar with Edit Button
+          GestureDetector(
+            onTap: () => _navigateToEditProfile(),
+            child: Stack(
+              children: [
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.accentGreen.withOpacity(0.2),
+                    border: Border.all(
+                      color: AppTheme.accentGreen,
+                      width: 3,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _userName?.isNotEmpty == true 
+                          ? _userName![0].toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                        color: AppTheme.accentGreen,
+                        fontSize: 40,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentGreen,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFF121212), width: 2),
+                    ),
+                    child: const Icon(LucideIcons.pencil, color: Colors.black, size: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // User Name with Edit
+          GestureDetector(
+            onTap: () => _navigateToEditProfile(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _userName ?? 'Loading...',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(LucideIcons.pencil, color: Colors.grey, size: 16),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 4),
+          
+          // User Role Badge
           Container(
-            decoration: const BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.topCenter,
-                radius: 1.2,
-                colors: [Color(0xFF2C2C2C), Color(0xFF000000)],
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.accentGreen.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _userRole?.toUpperCase() ?? 'USER',
+              style: const TextStyle(
+                color: AppTheme.accentGreen,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
           
-          SafeArea(
-            child: Column(
+          const SizedBox(height: 40),
+          
+          // Desktop: Two column layout, Mobile: Single column
+          if (isDesktop) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => context.pop(),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 22),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Text(
-                        'Profile',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Content
+                // Left column: Profile Info
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
+                  child: _buildGlassCard(
                     child: Column(
                       children: [
-                        const SizedBox(height: 20),
-                        
-                        // Profile Avatar with Edit Button
-                        GestureDetector(
+                        _buildInfoRow(
+                          icon: LucideIcons.phone,
+                          label: 'Phone',
+                          value: _userPhone ?? 'Not set',
+                        ),
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildInfoRow(
+                          icon: LucideIcons.user,
+                          label: 'User ID',
+                          value: _userId != null 
+                              ? '${_userId!.substring(0, 8)}...'
+                              : 'Not available',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 24),
+                // Right column: Menu Items
+                Expanded(
+                  child: _buildGlassCard(
+                    child: Column(
+                      children: [
+                        _buildMenuRow(
+                          icon: LucideIcons.userPen,
+                          label: 'Edit Profile',
                           onTap: () => _navigateToEditProfile(),
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppTheme.accentGreen.withOpacity(0.2),
-                                  border: Border.all(
-                                    color: AppTheme.accentGreen,
-                                    width: 3,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    _userName?.isNotEmpty == true 
-                                        ? _userName![0].toUpperCase()
-                                        : '?',
-                                    style: const TextStyle(
-                                      color: AppTheme.accentGreen,
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.accentGreen,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: const Color(0xFF121212), width: 2),
-                                  ),
-                                  child: const Icon(LucideIcons.pencil, color: Colors.black, size: 14),
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
-                        
-                        const SizedBox(height: 16),
-                        
-                        // User Name with Edit
-                        GestureDetector(
-                          onTap: () => _navigateToEditProfile(),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _userName ?? 'Loading...',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(LucideIcons.pencil, color: Colors.grey, size: 16),
-                            ],
-                          ),
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildMenuRow(
+                          icon: LucideIcons.settings,
+                          label: 'Settings',
+                          onTap: () => context.push('/settings'),
                         ),
-                        
-                        const SizedBox(height: 4),
-                        
-                        // User Role Badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accentGreen.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _userRole?.toUpperCase() ?? 'USER',
-                            style: const TextStyle(
-                              color: AppTheme.accentGreen,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildMenuRow(
+                          icon: LucideIcons.circleHelp,
+                          label: 'Help & Support',
+                          onTap: () => context.push('/help-support'),
                         ),
-                        
-                        const SizedBox(height: 40),
-                        
-                        // Profile Info Card
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildInfoRow(
-                                icon: LucideIcons.phone,
-                                label: 'Phone',
-                                value: _userPhone ?? 'Not set',
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildInfoRow(
-                                icon: LucideIcons.user,
-                                label: 'User ID',
-                                value: _userId != null 
-                                    ? '${_userId!.substring(0, 8)}...'
-                                    : 'Not available',
-                              ),
-                            ],
-                          ),
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildMenuRow(
+                          icon: LucideIcons.info,
+                          label: 'About',
+                          onTap: () => context.push('/about'),
                         ),
-                        
-                        const SizedBox(height: 20),
-                        
-                        // Menu Items Card
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildMenuRow(
-                                icon: LucideIcons.userPen,
-                                label: 'Edit Profile',
-                                onTap: () => _navigateToEditProfile(),
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildMenuRow(
-                                icon: LucideIcons.settings,
-                                label: 'Settings',
-                                onTap: () => context.push('/settings'),
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildMenuRow(
-                                icon: LucideIcons.circleHelp,
-                                label: 'Help & Support',
-                                onTap: () => context.push('/help-support'),
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildMenuRow(
-                                icon: LucideIcons.info,
-                                label: 'About',
-                                onTap: () => context.push('/about'),
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 30),
-                        
-                        // Logout Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton.icon(
-                            onPressed: _isLoading ? null : _handleLogout,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red.withOpacity(0.2),
-                              foregroundColor: Colors.red,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                side: const BorderSide(color: Colors.red, width: 1),
-                              ),
-                            ),
-                            icon: _isLoading 
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.red,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(LucideIcons.logOut),
-                            label: Text(_isLoading ? 'Logging out...' : 'Logout'),
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 40),
                       ],
                     ),
                   ),
                 ),
               ],
             ),
+          ] else ...[
+            // Mobile: Single column layout
+            _buildGlassCard(
+              child: Column(
+                children: [
+                  _buildInfoRow(
+                    icon: LucideIcons.phone,
+                    label: 'Phone',
+                    value: _userPhone ?? 'Not set',
+                  ),
+                  const Divider(color: Colors.white12, height: 24),
+                  _buildInfoRow(
+                    icon: LucideIcons.user,
+                    label: 'User ID',
+                    value: _userId != null 
+                        ? '${_userId!.substring(0, 8)}...'
+                        : 'Not available',
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            _buildGlassCard(
+              child: Column(
+                children: [
+                  _buildMenuRow(
+                    icon: LucideIcons.userPen,
+                    label: 'Edit Profile',
+                    onTap: () => _navigateToEditProfile(),
+                  ),
+                  const Divider(color: Colors.white12, height: 24),
+                  _buildMenuRow(
+                    icon: LucideIcons.settings,
+                    label: 'Settings',
+                    onTap: () => context.push('/settings'),
+                  ),
+                  const Divider(color: Colors.white12, height: 24),
+                  _buildMenuRow(
+                    icon: LucideIcons.circleHelp,
+                    label: 'Help & Support',
+                    onTap: () => context.push('/help-support'),
+                  ),
+                  const Divider(color: Colors.white12, height: 24),
+                  _buildMenuRow(
+                    icon: LucideIcons.info,
+                    label: 'About',
+                    onTap: () => context.push('/about'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          const SizedBox(height: 30),
+          
+          // Logout Button - constrained width on desktop
+          SizedBox(
+            width: isDesktop ? 300 : double.infinity,
+            height: 56,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _handleLogout,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.withOpacity(0.2),
+                foregroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Colors.red, width: 1),
+                ),
+              ),
+              icon: _isLoading 
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.red,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(LucideIcons.logOut),
+              label: Text(_isLoading ? 'Logging out...' : 'Logout'),
+            ),
           ),
+          
+          const SizedBox(height: 40),
         ],
       ),
-      // Bottom nav is provided by ResponsiveShell - removed duplicate
     );
   }
 

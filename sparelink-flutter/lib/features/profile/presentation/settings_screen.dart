@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/responsive_page_layout.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -21,240 +22,273 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: Stack(
-        children: [
-          // Background gradient
-          Container(
-            decoration: const BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.topCenter,
-                radius: 1.2,
-                colors: [Color(0xFF2C2C2C), Color(0xFF000000)],
-              ),
-            ),
-          ),
-          
-          SafeArea(
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => context.pop(),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 22),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Text(
-                        'Settings',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Content
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 10),
-                        
-                        // Notifications Section
-                        const Text(
-                          'NOTIFICATIONS',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildSwitchRow(
-                                icon: LucideIcons.bell,
-                                label: 'Push Notifications',
-                                subtitle: 'Receive push notifications',
-                                value: _notificationsEnabled,
-                                onChanged: (value) {
-                                  setState(() => _notificationsEnabled = value);
-                                },
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildSwitchRow(
-                                icon: LucideIcons.volume2,
-                                label: 'Sound',
-                                subtitle: 'Play sound for notifications',
-                                value: _soundEnabled,
-                                onChanged: (value) {
-                                  setState(() => _soundEnabled = value);
-                                },
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildSwitchRow(
-                                icon: LucideIcons.smartphone,
-                                label: 'Vibration',
-                                subtitle: 'Vibrate for notifications',
-                                value: _vibrationEnabled,
-                                onChanged: (value) {
-                                  setState(() => _vibrationEnabled = value);
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 30),
-                        
-                        // Appearance Section
-                        const Text(
-                          'APPEARANCE',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildSwitchRow(
-                                icon: LucideIcons.moon,
-                                label: 'Dark Mode',
-                                subtitle: 'Use dark theme',
-                                value: _darkMode,
-                                onChanged: (value) {
-                                  // Dark mode is always on for now
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Light mode coming soon!'),
-                                      backgroundColor: AppTheme.accentGreen,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 30),
-                        
-                        // Privacy Section
-                        const Text(
-                          'PRIVACY',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildSwitchRow(
-                                icon: LucideIcons.mapPin,
-                                label: 'Location Services',
-                                subtitle: 'Allow access to your location',
-                                value: _locationEnabled,
-                                onChanged: (value) {
-                                  setState(() => _locationEnabled = value);
-                                },
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildMenuRow(
-                                icon: LucideIcons.shield,
-                                label: 'Privacy Policy',
-                                onTap: () {
-                                  _showPrivacyPolicy();
-                                },
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildMenuRow(
-                                icon: LucideIcons.fileText,
-                                label: 'Terms of Service',
-                                onTap: () {
-                                  _showTermsOfService();
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 30),
-                        
-                        // Data Section
-                        const Text(
-                          'DATA',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildMenuRow(
-                                icon: LucideIcons.download,
-                                label: 'Download My Data',
-                                onTap: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Data download request sent!'),
-                                      backgroundColor: AppTheme.accentGreen,
-                                    ),
-                                  );
-                                },
-                              ),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildMenuRow(
-                                icon: LucideIcons.trash2,
-                                label: 'Delete Account',
-                                iconColor: Colors.red,
-                                labelColor: Colors.red,
-                                onTap: () {
-                                  _showDeleteAccountDialog();
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 40),
-                      ],
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+    
+    return ResponsivePageLayout(
+      maxWidth: ResponsivePageLayout.mediumWidth,
+      title: 'Settings',
+      showBackButton: !isDesktop,
+      child: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
+    );
+  }
+  
+  Widget _buildDesktopLayout() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left column: Notifications & Appearance
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionTitle('NOTIFICATIONS'),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                child: Column(
+                  children: [
+                    _buildSwitchRow(
+                      icon: LucideIcons.bell,
+                      label: 'Push Notifications',
+                      subtitle: 'Receive push notifications',
+                      value: _notificationsEnabled,
+                      onChanged: (value) => setState(() => _notificationsEnabled = value),
                     ),
-                  ),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildSwitchRow(
+                      icon: LucideIcons.volume2,
+                      label: 'Sound',
+                      subtitle: 'Play sound for notifications',
+                      value: _soundEnabled,
+                      onChanged: (value) => setState(() => _soundEnabled = value),
+                    ),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildSwitchRow(
+                      icon: LucideIcons.smartphone,
+                      label: 'Vibration',
+                      subtitle: 'Vibrate for notifications',
+                      value: _vibrationEnabled,
+                      onChanged: (value) => setState(() => _vibrationEnabled = value),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 30),
+              _buildSectionTitle('APPEARANCE'),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                child: _buildSwitchRow(
+                  icon: LucideIcons.moon,
+                  label: 'Dark Mode',
+                  subtitle: 'Use dark theme',
+                  value: _darkMode,
+                  onChanged: (value) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Light mode coming soon!'),
+                        backgroundColor: AppTheme.accentGreen,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+        const SizedBox(width: 24),
+        // Right column: Privacy & Data
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionTitle('PRIVACY'),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                child: Column(
+                  children: [
+                    _buildSwitchRow(
+                      icon: LucideIcons.mapPin,
+                      label: 'Location Services',
+                      subtitle: 'Allow access to your location',
+                      value: _locationEnabled,
+                      onChanged: (value) => setState(() => _locationEnabled = value),
+                    ),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildMenuRow(
+                      icon: LucideIcons.shield,
+                      label: 'Privacy Policy',
+                      onTap: () => _showPrivacyPolicy(),
+                    ),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildMenuRow(
+                      icon: LucideIcons.fileText,
+                      label: 'Terms of Service',
+                      onTap: () => _showTermsOfService(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
+              _buildSectionTitle('DATA'),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                child: Column(
+                  children: [
+                    _buildMenuRow(
+                      icon: LucideIcons.download,
+                      label: 'Download My Data',
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Data download request sent!'),
+                            backgroundColor: AppTheme.accentGreen,
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildMenuRow(
+                      icon: LucideIcons.trash2,
+                      label: 'Delete Account',
+                      iconColor: Colors.red,
+                      labelColor: Colors.red,
+                      onTap: () => _showDeleteAccountDialog(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildMobileLayout() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        _buildSectionTitle('NOTIFICATIONS'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildSwitchRow(
+                icon: LucideIcons.bell,
+                label: 'Push Notifications',
+                subtitle: 'Receive push notifications',
+                value: _notificationsEnabled,
+                onChanged: (value) => setState(() => _notificationsEnabled = value),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildSwitchRow(
+                icon: LucideIcons.volume2,
+                label: 'Sound',
+                subtitle: 'Play sound for notifications',
+                value: _soundEnabled,
+                onChanged: (value) => setState(() => _soundEnabled = value),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildSwitchRow(
+                icon: LucideIcons.smartphone,
+                label: 'Vibration',
+                subtitle: 'Vibrate for notifications',
+                value: _vibrationEnabled,
+                onChanged: (value) => setState(() => _vibrationEnabled = value),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('APPEARANCE'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: _buildSwitchRow(
+            icon: LucideIcons.moon,
+            label: 'Dark Mode',
+            subtitle: 'Use dark theme',
+            value: _darkMode,
+            onChanged: (value) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Light mode coming soon!'),
+                  backgroundColor: AppTheme.accentGreen,
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('PRIVACY'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildSwitchRow(
+                icon: LucideIcons.mapPin,
+                label: 'Location Services',
+                subtitle: 'Allow access to your location',
+                value: _locationEnabled,
+                onChanged: (value) => setState(() => _locationEnabled = value),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildMenuRow(
+                icon: LucideIcons.shield,
+                label: 'Privacy Policy',
+                onTap: () => _showPrivacyPolicy(),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildMenuRow(
+                icon: LucideIcons.fileText,
+                label: 'Terms of Service',
+                onTap: () => _showTermsOfService(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('DATA'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildMenuRow(
+                icon: LucideIcons.download,
+                label: 'Download My Data',
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Data download request sent!'),
+                      backgroundColor: AppTheme.accentGreen,
+                    ),
+                  );
+                },
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildMenuRow(
+                icon: LucideIcons.trash2,
+                label: 'Delete Account',
+                iconColor: Colors.red,
+                labelColor: Colors.red,
+                onTap: () => _showDeleteAccountDialog(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+  
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Colors.grey,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1,
       ),
     );
   }

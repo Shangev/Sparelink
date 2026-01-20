@@ -3,117 +3,162 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/responsive_page_layout.dart';
 
 class HelpSupportScreen extends StatelessWidget {
   const HelpSupportScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.topCenter,
-                radius: 1.2,
-                colors: [Color(0xFF2C2C2C), Color(0xFF000000)],
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+    
+    return ResponsivePageLayout(
+      maxWidth: ResponsivePageLayout.mediumWidth,
+      title: 'Help & Support',
+      showBackButton: !isDesktop,
+      child: isDesktop ? _buildDesktopLayout(context) : _buildMobileLayout(context),
+    );
+  }
+  
+  Widget _buildDesktopLayout(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left column: FAQs
+        Expanded(
+          flex: 3,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionTitle('FREQUENTLY ASKED QUESTIONS'),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                child: Column(
+                  children: [
+                    _buildFaqItem(context, 'How do I request a part?',
+                        'Tap "Request a Part" on the home screen, take photos of your vehicle/part, select your vehicle details, and submit. Nearby shops will respond with quotes.'),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildFaqItem(context, 'How long until I get quotes?',
+                        'Most shops respond within 1-2 hours during business hours. You\'ll receive notifications when new quotes arrive.'),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildFaqItem(context, 'Is my information secure?',
+                        'Yes! We use industry-standard encryption and never share your personal data with third parties.'),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildFaqItem(context, 'How do I contact a shop?',
+                        'Once you receive a quote, you can chat directly with the shop through our in-app messaging system.'),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => context.pop(),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 22),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Text(
-                        'Help & Support',
-                        style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
+        ),
+        const SizedBox(width: 24),
+        // Right column: Contact & Hours
+        Expanded(
+          flex: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionTitle('CONTACT US'),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                child: Column(
+                  children: [
+                    _buildContactRow(context, LucideIcons.mail, 'Email Support', 'support@sparelink.co.za'),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildContactRow(context, LucideIcons.phone, 'Phone Support', '+27 10 123 4567'),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildContactRow(context, LucideIcons.messageCircle, 'WhatsApp', '+27 71 234 5678'),
+                  ],
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 10),
-                        const Text('FREQUENTLY ASKED QUESTIONS',
-                            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1)),
-                        const SizedBox(height: 12),
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildFaqItem(context, 'How do I request a part?',
-                                  'Tap "Request a Part" on the home screen, take photos of your vehicle/part, select your vehicle details, and submit. Nearby shops will respond with quotes.'),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildFaqItem(context, 'How long until I get quotes?',
-                                  'Most shops respond within 1-2 hours during business hours. You\'ll receive notifications when new quotes arrive.'),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildFaqItem(context, 'Is my information secure?',
-                                  'Yes! We use industry-standard encryption and never share your personal data with third parties.'),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildFaqItem(context, 'How do I contact a shop?',
-                                  'Once you receive a quote, you can chat directly with the shop through our in-app messaging system.'),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 30),
-                        const Text('CONTACT US',
-                            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1)),
-                        const SizedBox(height: 12),
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildContactRow(context, LucideIcons.mail, 'Email Support', 'support@sparelink.co.za'),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildContactRow(context, LucideIcons.phone, 'Phone Support', '+27 10 123 4567'),
-                              const Divider(color: Colors.white12, height: 24),
-                              _buildContactRow(context, LucideIcons.messageCircle, 'WhatsApp', '+27 71 234 5678'),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 30),
-                        const Text('BUSINESS HOURS',
-                            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1)),
-                        const SizedBox(height: 12),
-                        _buildGlassCard(
-                          child: Column(
-                            children: [
-                              _buildHoursRow('Monday - Friday', '08:00 - 17:00'),
-                              const Divider(color: Colors.white12, height: 16),
-                              _buildHoursRow('Saturday', '08:00 - 13:00'),
-                              const Divider(color: Colors.white12, height: 16),
-                              _buildHoursRow('Sunday & Holidays', 'Closed'),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                      ],
-                    ),
-                  ),
+              ),
+              const SizedBox(height: 30),
+              _buildSectionTitle('BUSINESS HOURS'),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                child: Column(
+                  children: [
+                    _buildHoursRow('Monday - Friday', '08:00 - 17:00'),
+                    const Divider(color: Colors.white12, height: 16),
+                    _buildHoursRow('Saturday', '08:00 - 13:00'),
+                    const Divider(color: Colors.white12, height: 16),
+                    _buildHoursRow('Sunday & Holidays', 'Closed'),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildMobileLayout(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        _buildSectionTitle('FREQUENTLY ASKED QUESTIONS'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildFaqItem(context, 'How do I request a part?',
+                  'Tap "Request a Part" on the home screen, take photos of your vehicle/part, select your vehicle details, and submit. Nearby shops will respond with quotes.'),
+              const Divider(color: Colors.white12, height: 24),
+              _buildFaqItem(context, 'How long until I get quotes?',
+                  'Most shops respond within 1-2 hours during business hours. You\'ll receive notifications when new quotes arrive.'),
+              const Divider(color: Colors.white12, height: 24),
+              _buildFaqItem(context, 'Is my information secure?',
+                  'Yes! We use industry-standard encryption and never share your personal data with third parties.'),
+              const Divider(color: Colors.white12, height: 24),
+              _buildFaqItem(context, 'How do I contact a shop?',
+                  'Once you receive a quote, you can chat directly with the shop through our in-app messaging system.'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('CONTACT US'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildContactRow(context, LucideIcons.mail, 'Email Support', 'support@sparelink.co.za'),
+              const Divider(color: Colors.white12, height: 24),
+              _buildContactRow(context, LucideIcons.phone, 'Phone Support', '+27 10 123 4567'),
+              const Divider(color: Colors.white12, height: 24),
+              _buildContactRow(context, LucideIcons.messageCircle, 'WhatsApp', '+27 71 234 5678'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('BUSINESS HOURS'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildHoursRow('Monday - Friday', '08:00 - 17:00'),
+              const Divider(color: Colors.white12, height: 16),
+              _buildHoursRow('Saturday', '08:00 - 13:00'),
+              const Divider(color: Colors.white12, height: 16),
+              _buildHoursRow('Sunday & Holidays', 'Closed'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+  
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Colors.grey,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1,
       ),
     );
   }

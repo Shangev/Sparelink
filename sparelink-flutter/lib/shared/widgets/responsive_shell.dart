@@ -406,10 +406,12 @@ class _ResponsiveShellState extends ConsumerState<ResponsiveShell> {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: _navItems.take(4).map((item) {
+        children: _navItems.map((item) {
           final isActive = _isPathActive(item.path);
+          // Use Grid icon for Home on mobile
+          final icon = item.path == '/' ? LucideIcons.layoutGrid : item.icon;
           return _buildNavItem(
-            icon: item.icon,
+            icon: icon,
             label: item.label,
             isActive: isActive,
             badge: item.badgeCount ?? 0,
