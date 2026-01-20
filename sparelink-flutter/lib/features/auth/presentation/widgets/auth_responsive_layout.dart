@@ -72,8 +72,8 @@ class AuthResponsiveLayout extends StatelessWidget {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: maxFormWidth),
+        child: SizedBox(
+          width: maxFormWidth,
           child: child,
         ),
       ),
@@ -97,8 +97,8 @@ class AuthResponsiveLayout extends StatelessWidget {
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 48),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: maxFormWidth),
+                child: SizedBox(
+                  width: maxFormWidth,
                   child: child,
                 ),
               ),
