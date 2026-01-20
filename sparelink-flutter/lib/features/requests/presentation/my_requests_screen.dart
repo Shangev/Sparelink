@@ -543,8 +543,7 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
           ],
         ),
       ),
-      // Bottom Navigation Bar
-      bottomNavigationBar: _buildBottomNavBar(),
+      // Bottom nav is provided by ResponsiveShell - removed duplicate
     );
   }
   
@@ -764,82 +763,6 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
     });
   }
 
-  Widget _buildBottomNavBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: _cardBackground,
-        border: Border(
-          top: BorderSide(color: Color(0xFF2A2A2A), width: 1),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(
-              icon: LucideIcons.grid3x3,
-              label: 'Home',
-              isActive: false,
-              onTap: () => context.go('/'),
-            ),
-            _buildNavItem(
-              icon: LucideIcons.clipboardList,
-              label: 'My Requests',
-              isActive: true,
-              onTap: () {},
-            ),
-            _buildNavItem(
-              icon: LucideIcons.messageCircle,
-              label: 'Chats',
-              isActive: false,
-              onTap: () => context.push('/chats'),
-            ),
-            _buildNavItem(
-              icon: LucideIcons.user,
-              label: 'Profile',
-              isActive: false,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Profile coming soon')),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isActive ? Colors.white : _subtitleGray,
-            size: 24,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? Colors.white : _subtitleGray,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Request Card Widget - with selection mode and swipe actions

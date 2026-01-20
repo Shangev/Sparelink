@@ -405,7 +405,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     return _buildMobileLayout(context);
   }
   
-  /// Mobile layout - original single-column view with bottom nav
+  /// Mobile layout - original single-column view (bottom nav provided by ResponsiveShell)
   Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: _backgroundColor,
@@ -438,8 +438,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           ],
         ),
       ),
-      // Bottom Navigation Bar
-      bottomNavigationBar: _buildBottomNavBar(),
+      // Bottom nav is provided by ResponsiveShell - removed duplicate
     );
   }
   
@@ -740,78 +739,6 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     );
   }
 
-  Widget _buildBottomNavBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: _cardBackground,
-        border: Border(
-          top: BorderSide(color: Color(0xFF2A2A2A), width: 1),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(
-              icon: LucideIcons.grid3x3,
-              label: 'Home',
-              isActive: false,
-              onTap: () => context.go('/'),
-            ),
-            _buildNavItem(
-              icon: LucideIcons.clipboardList,
-              label: 'My Requests',
-              isActive: false,
-              onTap: () => context.push('/my-requests'),
-            ),
-            _buildNavItem(
-              icon: LucideIcons.messageCircle,
-              label: 'Chats',
-              isActive: true,
-              onTap: () {},
-            ),
-            _buildNavItem(
-              icon: LucideIcons.user,
-              label: 'Profile',
-              isActive: false,
-              onTap: () => context.push('/profile'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isActive ? Colors.white : _subtitleGray,
-            size: 24,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? Colors.white : _subtitleGray,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Desktop icon button with hover effect

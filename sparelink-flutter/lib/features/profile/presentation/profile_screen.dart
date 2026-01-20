@@ -420,44 +420,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ],
       ),
-      // Bottom Navigation Bar
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(bottom: 20, top: 10),
-        decoration: const BoxDecoration(
-          color: Colors.black,
-          border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(
-              context: context,
-              icon: LucideIcons.grid3x3,
-              label: 'Home',
-              onTap: () => context.go('/'),
-            ),
-            _buildNavItem(
-              context: context,
-              icon: LucideIcons.clipboardList,
-              label: 'My Requests',
-              onTap: () => context.push('/my-requests'),
-            ),
-            _buildNavItem(
-              context: context,
-              icon: LucideIcons.messageSquare,
-              label: 'Chats',
-              onTap: () => context.push('/chats'),
-            ),
-            _buildNavItem(
-              context: context,
-              icon: LucideIcons.user,
-              label: 'Profile',
-              isActive: true,
-              onTap: () {},
-            ),
-          ],
-        ),
-      ),
+      // Bottom nav is provided by ResponsiveShell - removed duplicate
     );
   }
 
@@ -556,26 +519,4 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildNavItem({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    bool isActive = false,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: isActive ? Colors.white : Colors.white38, size: 26),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(color: isActive ? Colors.white : Colors.white38, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
 }
