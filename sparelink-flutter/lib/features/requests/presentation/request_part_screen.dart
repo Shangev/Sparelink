@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/vehicle_service.dart';
 import '../../../shared/services/draft_service.dart';
+import '../../../shared/widgets/responsive_page_layout.dart';
 
 class RequestPartScreen extends ConsumerStatefulWidget {
   const RequestPartScreen({super.key});
@@ -704,24 +705,208 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+    
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF121212),
         elevation: 0,
-        leading: IconButton(
+        leading: isDesktop ? null : IconButton(
           icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
           onPressed: () => context.pop(),
         ),
         title: const Text('Request a Part', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        centerTitle: isDesktop,
       ),
-      body: Column(
+      body: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
+    );
+  }
+  
+  Widget _buildMobileLayout() {
+    return Column(
+      children: [
+        _buildStepIndicator(),
+        Expanded(
+          child: _currentStep == 0 ? _buildVehicleStep() : _buildPartsStep(),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildDesktopLayout() {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1000),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left side: Step navigation
+              SizedBox(
+                width: 240,
+                child: _buildDesktopStepNav(),
+              ),
+              const SizedBox(width: 32),
+              // Right side: Form content
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: _currentStep == 0 ? _buildVehicleStep() : _buildPartsStep(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildDesktopStepNav() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _buildStepIndicator(),
-          Expanded(
-            child: _currentStep == 0 ? _buildVehicleStep() : _buildPartsStep(),
+          const Text(
+            'Steps',
+            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 24),
+          _buildDesktopStepItem(
+            step: 0,
+            title: 'Vehicle Details',
+            subtitle: 'Make, model & year',
+            icon: LucideIcons.car,
+          ),
+          const SizedBox(height: 16),
+          _buildDesktopStepItem(
+            step: 1,
+            title: 'Parts Selection',
+            subtitle: 'Choose needed parts',
+            icon: LucideIcons.cog,
+          ),
+          const SizedBox(height: 32),
+          // Progress indicator
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Progress',
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: _currentStep == 0 ? 0.0 : (_selectedParts.isEmpty ? 0.5 : 1.0),
+                backgroundColor: Colors.grey[800],
+                valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accentGreen),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _currentStep == 0 
+                    ? 'Fill in vehicle details'
+                    : _selectedParts.isEmpty 
+                        ? 'Add at least one part'
+                        : '${_selectedParts.length} part(s) selected',
+                style: TextStyle(color: Colors.grey[400], fontSize: 12),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+  
+  Widget _buildDesktopStepItem({
+    required int step,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final isActive = _currentStep == step;
+    final isCompleted = _currentStep > step;
+    final canNavigate = step == 0 || (step == 1 && _canProceedToStep2());
+    
+    return MouseRegion(
+      cursor: canNavigate ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: canNavigate ? () => setState(() => _currentStep = step) : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isActive 
+                ? AppTheme.accentGreen.withOpacity(0.1)
+                : isCompleted 
+                    ? Colors.green.withOpacity(0.05)
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive 
+                  ? AppTheme.accentGreen 
+                  : isCompleted 
+                      ? Colors.green.withOpacity(0.3)
+                      : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isActive 
+                      ? AppTheme.accentGreen
+                      : isCompleted 
+                          ? Colors.green
+                          : Colors.grey[800],
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: isCompleted
+                      ? const Icon(LucideIcons.check, color: Colors.white, size: 20)
+                      : Icon(icon, color: Colors.white, size: 20),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: isActive || isCompleted ? Colors.white : Colors.grey,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

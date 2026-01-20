@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/supabase_service.dart';
+import '../../../shared/widgets/responsive_page_layout.dart';
 
 /// Notifications Screen - Shows all user notifications
 /// Categories: Quotes, Orders, Messages, System
@@ -140,44 +141,55 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 600;
+    
     return Scaffold(
       backgroundColor: _backgroundColor,
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            _buildFilterTabs(),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Colors.white))
-                  : _filteredNotifications.isEmpty
-                      ? _buildEmptyState()
-                      : _buildNotificationsList(),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 700),
+            child: Column(
+              children: [
+                _buildHeader(isDesktop),
+                _buildFilterTabs(),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                      : _filteredNotifications.isEmpty
+                          ? _buildEmptyState()
+                          : _buildNotificationsList(),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isDesktop) {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          // Back Button
-          GestureDetector(
-            onTap: () => context.pop(),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+          // Back Button - hide on desktop (sidebar provides navigation)
+          if (!isDesktop) ...[
+            GestureDetector(
+              onTap: () => context.pop(),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 24),
               ),
-              child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 24),
             ),
-          ),
-          const SizedBox(width: 16),
+            const SizedBox(width: 16),
+          ],
           
           // Title
           const Expanded(
