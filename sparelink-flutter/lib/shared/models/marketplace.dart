@@ -117,6 +117,10 @@ class Offer {
   final String? warranty;
   final OfferStatus status;
   final DateTime createdAt;
+  final DateTime? expiresAt;  // Quote expiry timestamp
+  final int? counterOfferCents;  // Counter-offer from mechanic
+  final String? counterOfferMessage;  // Counter-offer message
+  final bool isCounterOffer;  // Whether this is a counter-offer response
 
   Offer({
     required this.id,
@@ -133,7 +137,34 @@ class Offer {
     this.warranty,
     this.status = OfferStatus.pending,
     required this.createdAt,
+    this.expiresAt,
+    this.counterOfferCents,
+    this.counterOfferMessage,
+    this.isCounterOffer = false,
   });
+  
+  /// Check if the quote has expired
+  bool get isExpired {
+    if (expiresAt == null) return false;
+    return DateTime.now().isAfter(expiresAt!);
+  }
+  
+  /// Time remaining until expiry
+  Duration? get timeUntilExpiry {
+    if (expiresAt == null) return null;
+    final remaining = expiresAt!.difference(DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+  
+  /// Human-readable expiry time
+  String get expiryLabel {
+    if (expiresAt == null) return 'No expiry';
+    if (isExpired) return 'Expired';
+    final remaining = timeUntilExpiry!;
+    if (remaining.inHours < 1) return '${remaining.inMinutes}m left';
+    if (remaining.inHours < 24) return '${remaining.inHours}h left';
+    return '${remaining.inDays}d left';
+  }
 
   /// Price in Rands
   double get priceRands => priceCents / 100;
@@ -202,11 +233,27 @@ class Offer {
       etaMinutes = days * 24 * 60; // days to minutes
     }
     
+    // Handle counter offer cents
+    int? counterOfferCents;
+    if (json['counter_offer_cents'] != null) {
+      counterOfferCents = json['counter_offer_cents'];
+    } else if (json['counter_offer_price'] != null) {
+      counterOfferCents = ((json['counter_offer_price'] as num) * 100).round();
+    }
+    
+    // Handle nested shop data (from joins)
+    Shop? shop;
+    if (json['shop'] != null) {
+      shop = Shop.fromJson(json['shop']);
+    } else if (json['shops'] != null) {
+      shop = Shop.fromJson(json['shops']);
+    }
+    
     return Offer(
       id: json['id'],
       requestId: json['request_id'],
       shopId: json['shop_id'],
-      shop: json['shop'] != null ? Shop.fromJson(json['shop']) : null,
+      shop: shop,
       priceCents: priceCents,
       deliveryFeeCents: deliveryFeeCents,
       etaMinutes: etaMinutes,
@@ -221,6 +268,12 @@ class Offer {
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at']) 
           : DateTime.now(),
+      expiresAt: json['expires_at'] != null 
+          ? DateTime.parse(json['expires_at']) 
+          : null,
+      counterOfferCents: counterOfferCents,
+      counterOfferMessage: json['counter_offer_message'],
+      isCounterOffer: json['is_counter_offer'] ?? false,
     );
   }
 
@@ -239,6 +292,10 @@ class Offer {
       'warranty': warranty,
       'status': status.name,
       'created_at': createdAt.toIso8601String(),
+      'expires_at': expiresAt?.toIso8601String(),
+      'counter_offer_cents': counterOfferCents,
+      'counter_offer_message': counterOfferMessage,
+      'is_counter_offer': isCounterOffer,
     };
   }
 

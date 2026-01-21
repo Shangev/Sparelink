@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/models/marketplace.dart';
 import '../../../shared/services/supabase_service.dart';
@@ -28,11 +29,51 @@ class _MarketplaceResultsScreenState extends ConsumerState<MarketplaceResultsScr
   bool _isLoading = true;
   String? _error;
   String _sortBy = 'price'; // price, distance, rating, eta
+  RealtimeChannel? _offersSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _subscribeToNewOffers();
+  }
+  
+  @override
+  void dispose() {
+    _offersSubscription?.unsubscribe();
+    super.dispose();
+  }
+  
+  /// Subscribe to real-time quote notifications
+  void _subscribeToNewOffers() {
+    final supabaseService = ref.read(supabaseServiceProvider);
+    _offersSubscription = supabaseService.subscribeToOffersForRequest(
+      widget.requestId,
+      (newOffer) {
+        // A new quote arrived! Show notification and refresh
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(LucideIcons.bell, color: Colors.black, size: 18),
+                  const SizedBox(width: 8),
+                  const Expanded(child: Text('New quote received!')),
+                ],
+              ),
+              backgroundColor: AppTheme.accentGreen,
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'View',
+                textColor: Colors.black,
+                onPressed: _loadData,
+              ),
+            ),
+          );
+          _loadData(); // Refresh the list
+        }
+      },
+    );
   }
 
   Future<void> _loadData() async {
@@ -121,35 +162,44 @@ class _MarketplaceResultsScreenState extends ConsumerState<MarketplaceResultsScr
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 600;
+    
     return Scaffold(
       backgroundColor: AppTheme.primaryBlack,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(),
-            
-            // Error State
-            if (_error != null && !_isLoading)
-              _buildErrorState(),
-            
-            // Request Summary Card
-            if (!_isLoading && _error == null && _request != null) _buildRequestSummary(),
-            
-            // Sort Options
-            if (!_isLoading && _error == null) _buildSortOptions(),
-            
-            // Results List
-            Expanded(
-              child: _isLoading
-                  ? _buildLoadingState()
-                  : _error != null
-                      ? const SizedBox()
-                      : _offers.isEmpty
-                          ? _buildEmptyState()
-                          : _buildOffersList(),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: Column(
+              children: [
+                // Header
+                _buildHeader(isDesktop),
+                
+                // Error State
+                if (_error != null && !_isLoading)
+                  _buildErrorState(),
+                
+                // Request Summary Card
+                if (!_isLoading && _error == null && _request != null) _buildRequestSummary(),
+                
+                // Sort Options
+                if (!_isLoading && _error == null) _buildSortOptions(),
+                
+                // Results List
+                Expanded(
+                  child: _isLoading
+                      ? _buildLoadingState()
+                      : _error != null
+                          ? const SizedBox()
+                          : _offers.isEmpty
+                              ? _buildEmptyState()
+                              : _buildOffersList(),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -187,7 +237,7 @@ class _MarketplaceResultsScreenState extends ConsumerState<MarketplaceResultsScr
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isDesktop) {
     // Use total shops available (offers + nearby shops)
     final shopCount = _totalShopsAvailable;
     final offerCount = _offers.length;
@@ -196,10 +246,11 @@ class _MarketplaceResultsScreenState extends ConsumerState<MarketplaceResultsScr
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () => context.pop(),
-            icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
-          ),
+          if (!isDesktop)
+            IconButton(
+              onPressed: () => context.pop(),
+              icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+            ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -224,6 +275,17 @@ class _MarketplaceResultsScreenState extends ConsumerState<MarketplaceResultsScr
               ],
             ),
           ),
+          // Compare Quotes button (shown when 2+ quotes)
+          if (!_isLoading && offerCount >= 2)
+            TextButton.icon(
+              onPressed: () => context.push('/compare-quotes/${widget.requestId}'),
+              icon: const Icon(LucideIcons.gitCompare, size: 16),
+              label: const Text('Compare'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.accentGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
           IconButton(
             onPressed: _loadData,
             icon: const Icon(LucideIcons.refreshCw, color: Colors.white),

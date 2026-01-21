@@ -159,6 +159,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 600;
+    
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: Stack(
@@ -175,44 +178,49 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           ),
           
           SafeArea(
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => context.pop(),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            shape: BoxShape.circle,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Column(
+                  children: [
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      child: Row(
+                        children: [
+                          if (!isDesktop)
+                            GestureDetector(
+                              onTap: () => context.pop(),
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 22),
+                              ),
+                            ),
+                          if (!isDesktop) const SizedBox(width: 16),
+                          const Text(
+                            'Edit Profile',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          child: const Icon(LucideIcons.arrowLeft, color: Colors.white, size: 22),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 16),
-                      const Text(
-                        'Edit Profile',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                // Content
-                Expanded(
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator(color: AppTheme.accentGreen))
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.all(20),
-                          child: Form(
+                    // Content
+                    Expanded(
+                      child: _isLoading
+                          ? const Center(child: CircularProgressIndicator(color: AppTheme.accentGreen))
+                          : SingleChildScrollView(
+                              padding: const EdgeInsets.all(20),
+                              child: Form(
                             key: _formKey,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -733,8 +741,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                             ),
                           ),
                         ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],

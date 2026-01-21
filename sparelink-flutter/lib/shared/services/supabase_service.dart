@@ -981,4 +981,117 @@ class SupabaseService {
         )
         .subscribe();
   }
+  
+  // ============================================
+  // COUNTER-OFFER / NEGOTIATION METHODS
+  // ============================================
+  
+  /// Send a counter-offer for an existing quote
+  /// 
+  /// This notifies the shop that the mechanic wants to negotiate
+  Future<void> sendCounterOffer({
+    required String offerId,
+    required int counterOfferCents,
+    String? message,
+  }) async {
+    // Update the offer with counter-offer details
+    await _client
+        .from(SupabaseConstants.offersTable)
+        .update({
+          'counter_offer_cents': counterOfferCents,
+          'counter_offer_message': message,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', offerId);
+    
+    // Get offer details for notification
+    final offer = await _client
+        .from(SupabaseConstants.offersTable)
+        .select('*, shops(owner_id, name), part_requests(vehicle_make, vehicle_model, part_category)')
+        .eq('id', offerId)
+        .single();
+    
+    // Notify the shop owner about the counter-offer
+    final shopData = offer['shops'];
+    final requestData = offer['part_requests'];
+    if (shopData != null && shopData['owner_id'] != null) {
+      final counterOfferRands = (counterOfferCents / 100).toStringAsFixed(2);
+      final partInfo = requestData != null 
+          ? '${requestData['part_category']} for ${requestData['vehicle_make']} ${requestData['vehicle_model']}'
+          : 'your quote';
+      
+      await _client.from('notifications').insert({
+        'user_id': shopData['owner_id'],
+        'type': 'counter_offer',
+        'title': 'Counter-Offer Received 💬',
+        'body': 'A mechanic has offered R$counterOfferRands for $partInfo. ${message ?? ''}',
+        'reference_id': offerId,
+      });
+    }
+  }
+  
+  /// Subscribe to new offers/quotes for a specific request (real-time)
+  /// 
+  /// This allows mechanics to be notified instantly when shops send quotes
+  RealtimeChannel subscribeToOffersForRequest(
+    String requestId,
+    void Function(Map<String, dynamic>) onNewOffer,
+  ) {
+    return _client
+        .channel('offers_$requestId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: SupabaseConstants.offersTable,
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'request_id',
+            value: requestId,
+          ),
+          callback: (payload) {
+            onNewOffer(payload.newRecord);
+          },
+        )
+        .subscribe();
+  }
+  
+  /// Subscribe to all new offers for a mechanic's requests
+  /// 
+  /// Uses a broader subscription and filters client-side
+  RealtimeChannel subscribeToAllNewOffers(
+    void Function(Map<String, dynamic>) onNewOffer,
+  ) {
+    return _client
+        .channel('all_new_offers')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: SupabaseConstants.offersTable,
+          callback: (payload) {
+            onNewOffer(payload.newRecord);
+          },
+        )
+        .subscribe();
+  }
+  
+  /// Create a notification for new quote received
+  Future<void> notifyMechanicOfNewQuote({
+    required String mechanicId,
+    required String shopName,
+    required String partName,
+    required int priceCents,
+    required String requestId,
+    required String offerId,
+  }) async {
+    final priceRands = (priceCents / 100).toStringAsFixed(2);
+    
+    await _client.from('notifications').insert({
+      'user_id': mechanicId,
+      'type': 'new_quote',
+      'title': 'New Quote Received! 💰',
+      'body': '$shopName quoted R$priceRands for $partName',
+      'reference_id': requestId,
+      'data': {'offer_id': offerId},
+    });
+  }
 }

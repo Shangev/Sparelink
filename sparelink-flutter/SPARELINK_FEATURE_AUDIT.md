@@ -77,10 +77,10 @@
 
 | Status | Issue | Priority | Description |
 |--------|-------|----------|-------------|
-| ❌ | No Quote Comparison | High | Can't compare quotes side-by-side |
-| ❌ | No Price Negotiation | Medium | Can't counter-offer |
-| ❌ | No Quote Expiry | Medium | Quotes don't expire - stale data |
-| ❌ | No Quote Notifications | High | Not notified when new quote arrives |
+| ✅ | No Quote Comparison | High | `quote_comparison_screen.dart` - Side-by-side comparison of up to 3 quotes |
+| ✅ | No Price Negotiation | Medium | `sendCounterOffer()` in supabase_service.dart - Counter-offer with notification to shop |
+| ✅ | No Quote Expiry | Medium | `expiresAt` field in Offer model with expiry labels and visual indicators |
+| ✅ | No Quote Notifications | High | Real-time subscription via `subscribeToOffersForRequest()` with SnackBar alerts |
 
 ### 7. ORDER & DELIVERY
 
@@ -236,10 +236,10 @@
 | Priority | Total | Completed | Remaining |
 |----------|-------|-----------|-----------|
 | 🔴 **Critical** | 6 | 3 | 3 |
-| 🟠 **High** | 28 | 12 | 16 |
-| 🟡 **Medium** | 45 | 24 | 21 |
+| 🟠 **High** | 28 | 14 | 14 |
+| 🟡 **Medium** | 45 | 26 | 19 |
 | 🟢 **Low** | 18 | 10 | 8 |
-| **TOTAL** | **97** | **46** | **51** |
+| **TOTAL** | **97** | **50** | **47** |
 
 ---
 
@@ -251,7 +251,7 @@
 | 2 | Push Notifications | Critical | ✅ |
 | 3 | Image Sending in Chat | High | ✅ |
 | 4 | Replace Hardcoded URLs | Critical | ✅ |
-| 5 | Quote Comparison View | High | ❌ |
+| 5 | Quote Comparison View | High | ✅ |
 | 6 | Analytics Dashboard | High | ❌ |
 | 7 | Saved Vehicles | High | ✅ |
 | 8 | Account Deletion | High | ❌ |
@@ -302,6 +302,10 @@
 | 2026-01-18 | Message Reactions | Chat | `_addReaction()`, `_showReactionPicker()` - Emoji reactions |
 | 2026-01-18 | Message Deletion | Chat | `_deleteMessage()` - Soft delete sent messages |
 | 2026-01-18 | Message Editing | Chat | `_startEditingMessage()`, `_saveEditedMessage()` - Edit typos |
+| 2026-01-21 | Quote Comparison | Marketplace | `quote_comparison_screen.dart` - Side-by-side comparison of up to 3 quotes with sorting |
+| 2026-01-21 | Price Negotiation | Marketplace | `sendCounterOffer()` - Counter-offer functionality with shop notification |
+| 2026-01-21 | Quote Expiry | Marketplace | `expiresAt` field in Offer model with visual expiry indicators |
+| 2026-01-21 | Quote Notifications | Marketplace | Real-time `subscribeToOffersForRequest()` with instant SnackBar alerts |
 | 2026-01-18 | Typing Indicator | Chat | Real-time typing status via `typing_status` table subscription |
 | 2026-01-18 | Online Status | Chat | `user_presence` table with real-time subscription |
 | 2026-01-18 | Message Search | Chat | `_toggleSearchMode()`, `_onSearchChanged()` - Search chat history |

@@ -20,6 +20,8 @@ import '../../features/chat/presentation/request_chat_screen.dart';
 import '../../features/requests/presentation/request_chats_screen.dart';
 import '../../features/marketplace/presentation/marketplace_results_screen.dart';
 import '../../features/marketplace/presentation/shop_detail_screen.dart';
+import '../../features/marketplace/presentation/quote_comparison_screen.dart';
+import '../../shared/models/marketplace.dart';
 import '../../features/orders/presentation/order_tracking_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/edit_profile_screen.dart';
@@ -224,6 +226,32 @@ final routerProvider = Provider<GoRouter>((ref) {
               final requestId = state.pathParameters['requestId']!;
               return MarketplaceResultsScreen(
                 requestId: requestId,
+              );
+            },
+          ),
+          
+          // Quote Comparison (side-by-side comparison view)
+          GoRoute(
+            path: '/compare-quotes/:requestId',
+            name: 'compare-quotes',
+            builder: (context, state) {
+              final requestId = state.pathParameters['requestId']!;
+              return QuoteComparisonScreen(requestId: requestId);
+            },
+          ),
+          
+          // Shop Detail with request context
+          GoRoute(
+            path: '/shop/:shopId/:requestId',
+            name: 'shop-detail-with-request',
+            builder: (context, state) {
+              final shopId = state.pathParameters['shopId']!;
+              final requestId = state.pathParameters['requestId']!;
+              final offer = state.extra as Offer?;
+              return ShopDetailScreen(
+                shopId: shopId,
+                requestId: requestId,
+                offer: offer,
               );
             },
           ),
