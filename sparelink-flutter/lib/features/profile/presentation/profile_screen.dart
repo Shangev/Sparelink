@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/services/storage_service.dart';
+import '../../../shared/services/settings_service.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -17,10 +20,12 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isLoading = false;
+  bool _isUploadingAvatar = false;
   String? _userName;
   String? _userPhone;
   String? _userRole;
   String? _userId;
+  String? _avatarUrl;
 
   @override
   void initState() {
@@ -40,6 +45,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       String? phone = await storageService.getUserPhone();
       String? role = await storageService.getUserRole();
       String? userId = await storageService.getUserId();
+      String? avatarUrl;
       
       // If local storage is empty or incomplete, fetch from Supabase
       if (userId == null || userId.isEmpty) {
@@ -55,6 +61,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             name = profile['full_name'] as String?;
             role = profile['role'] as String?;
             phone = phone ?? profile['phone'] as String?;
+            avatarUrl = profile['avatar_url'] as String?;
             
             // Save to local storage for next time
             await storageService.saveUserData(
@@ -65,13 +72,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             );
           }
         }
-      } else if (name == null || name.isEmpty) {
-        // We have userId but missing other data, fetch from Supabase
+      } else {
+        // We have userId, fetch from Supabase for latest data
         final profile = await supabaseService.getProfile(userId);
         if (profile != null) {
-          name = profile['full_name'] as String?;
-          role = role ?? profile['role'] as String?;
-          phone = phone ?? profile['phone'] as String?;
+          name = profile['full_name'] as String? ?? name;
+          role = profile['role'] as String? ?? role;
+          phone = profile['phone'] as String? ?? phone;
+          avatarUrl = profile['avatar_url'] as String?;
           
           // Update local storage
           await storageService.saveUserData(
@@ -89,6 +97,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           _userPhone = phone;
           _userRole = role;
           _userId = userId;
+          _avatarUrl = avatarUrl;
           _isLoading = false;
         });
       }
@@ -98,6 +107,177 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load profile: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _pickAndUploadAvatar() async {
+    final picker = ImagePicker();
+    
+    // Show picker options
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppTheme.darkGray,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Update Profile Picture',
+              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentGreen.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(LucideIcons.camera, color: AppTheme.accentGreen),
+              ),
+              title: const Text('Take Photo', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Use camera', style: TextStyle(color: Colors.grey)),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(LucideIcons.image, color: Colors.blue),
+              ),
+              title: const Text('Choose from Gallery', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Select existing photo', style: TextStyle(color: Colors.grey)),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            if (_avatarUrl != null) ...[
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(LucideIcons.trash2, color: Colors.red),
+                ),
+                title: const Text('Remove Photo', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('Use initials instead', style: TextStyle(color: Colors.grey)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _removeAvatar();
+                },
+              ),
+            ],
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+    
+    if (source == null) return;
+    
+    try {
+      final XFile? image = await picker.pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      
+      if (image == null) return;
+      
+      setState(() => _isUploadingAvatar = true);
+      
+      // Read image bytes
+      final bytes = await image.readAsBytes();
+      final fileName = 'avatar_${_userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final filePath = 'avatars/$fileName';
+      
+      // Upload to Supabase Storage
+      await Supabase.instance.client.storage
+          .from('avatars')
+          .uploadBinary(filePath, bytes, fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
+            upsert: true,
+          ));
+      
+      // Get public URL
+      final publicUrl = Supabase.instance.client.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+      
+      // Update profile with new avatar URL
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'avatar_url': publicUrl})
+          .eq('id', _userId!);
+      
+      setState(() {
+        _avatarUrl = publicUrl;
+        _isUploadingAvatar = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated!'),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isUploadingAvatar = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _removeAvatar() async {
+    try {
+      setState(() => _isUploadingAvatar = true);
+      
+      // Update profile to remove avatar URL
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'avatar_url': null})
+          .eq('id', _userId!);
+      
+      setState(() {
+        _avatarUrl = null;
+        _isUploadingAvatar = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture removed'),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isUploadingAvatar = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to remove: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -196,7 +376,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           
           // Profile Avatar with Edit Button
           GestureDetector(
-            onTap: () => _navigateToEditProfile(),
+            onTap: () => _pickAndUploadAvatar(),
             child: Stack(
               children: [
                 Container(
@@ -210,18 +390,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       width: 3,
                     ),
                   ),
-                  child: Center(
-                    child: Text(
-                      _userName?.isNotEmpty == true 
-                          ? _userName![0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        color: AppTheme.accentGreen,
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  child: _isUploadingAvatar
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: AppTheme.accentGreen,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : _avatarUrl != null && _avatarUrl!.isNotEmpty
+                          ? ClipOval(
+                              child: Image.network(
+                                _avatarUrl!,
+                                width: 100,
+                                height: 100,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Center(
+                                    child: CircularProgressIndicator(
+                                      color: AppTheme.accentGreen,
+                                      strokeWidth: 2,
+                                      value: loadingProgress.expectedTotalBytes != null
+                                          ? loadingProgress.cumulativeBytesLoaded /
+                                              loadingProgress.expectedTotalBytes!
+                                          : null,
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Center(
+                                    child: Text(
+                                      _userName?.isNotEmpty == true 
+                                          ? _userName![0].toUpperCase()
+                                          : '?',
+                                      style: const TextStyle(
+                                        color: AppTheme.accentGreen,
+                                        fontSize: 40,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            )
+                          : Center(
+                              child: Text(
+                                _userName?.isNotEmpty == true 
+                                    ? _userName![0].toUpperCase()
+                                    : '?',
+                                style: const TextStyle(
+                                  color: AppTheme.accentGreen,
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                 ),
                 Positioned(
                   bottom: 0,
@@ -233,7 +456,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: const Color(0xFF121212), width: 2),
                     ),
-                    child: const Icon(LucideIcons.pencil, color: Colors.black, size: 14),
+                    child: const Icon(LucideIcons.camera, color: Colors.black, size: 14),
                   ),
                 ),
               ],
@@ -324,6 +547,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                         const Divider(color: Colors.white12, height: 24),
                         _buildMenuRow(
+                          icon: LucideIcons.mapPin,
+                          label: 'My Addresses',
+                          onTap: () => context.push('/addresses'),
+                        ),
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildMenuRow(
                           icon: LucideIcons.settings,
                           label: 'Settings',
                           onTap: () => context.push('/settings'),
@@ -377,6 +606,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     icon: LucideIcons.userPen,
                     label: 'Edit Profile',
                     onTap: () => _navigateToEditProfile(),
+                  ),
+                  const Divider(color: Colors.white12, height: 24),
+                  _buildMenuRow(
+                    icon: LucideIcons.mapPin,
+                    label: 'My Addresses',
+                    onTap: () => context.push('/addresses'),
                   ),
                   const Divider(color: Colors.white12, height: 24),
                   _buildMenuRow(

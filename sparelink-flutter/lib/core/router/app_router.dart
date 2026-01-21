@@ -28,6 +28,7 @@ import '../../features/profile/presentation/edit_profile_screen.dart';
 import '../../features/profile/presentation/settings_screen.dart';
 import '../../features/profile/presentation/help_support_screen.dart';
 import '../../features/profile/presentation/about_screen.dart';
+import '../../features/profile/presentation/addresses_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../shared/widgets/responsive_shell.dart';
@@ -367,6 +368,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/about',
             name: 'about',
             builder: (context, state) => const AboutScreen(),
+          ),
+          
+          // Addresses Management
+          GoRoute(
+            path: '/addresses',
+            name: 'addresses',
+            builder: (context, state) => const AddressesScreen(),
           ),
           
           // Notifications

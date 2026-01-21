@@ -1,10 +1,14 @@
 import 'dart:ui';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
+import '../../../shared/services/settings_service.dart';
+import '../../../shared/services/storage_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -14,26 +18,24 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  bool _notificationsEnabled = true;
-  bool _soundEnabled = true;
-  bool _vibrationEnabled = true;
-  bool _darkMode = true; // Always dark for now
-  bool _locationEnabled = false;
+  bool _isDeleting = false;
+  bool _isExporting = false;
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 900;
+    final settings = ref.watch(settingsServiceProvider);
     
     return ResponsivePageLayout(
       maxWidth: ResponsivePageLayout.mediumWidth,
       title: 'Settings',
       showBackButton: !isDesktop,
-      child: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
+      child: isDesktop ? _buildDesktopLayout(settings) : _buildMobileLayout(settings),
     );
   }
   
-  Widget _buildDesktopLayout() {
+  Widget _buildDesktopLayout(SettingsService settings) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -51,24 +53,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       icon: LucideIcons.bell,
                       label: 'Push Notifications',
                       subtitle: 'Receive push notifications',
-                      value: _notificationsEnabled,
-                      onChanged: (value) => setState(() => _notificationsEnabled = value),
+                      value: settings.notificationsEnabled,
+                      onChanged: (value) => settings.setNotificationsEnabled(value),
                     ),
                     const Divider(color: Colors.white12, height: 24),
                     _buildSwitchRow(
                       icon: LucideIcons.volume2,
                       label: 'Sound',
                       subtitle: 'Play sound for notifications',
-                      value: _soundEnabled,
-                      onChanged: (value) => setState(() => _soundEnabled = value),
+                      value: settings.soundEnabled,
+                      onChanged: (value) => settings.setSoundEnabled(value),
                     ),
                     const Divider(color: Colors.white12, height: 24),
                     _buildSwitchRow(
                       icon: LucideIcons.smartphone,
                       label: 'Vibration',
                       subtitle: 'Vibrate for notifications',
-                      value: _vibrationEnabled,
-                      onChanged: (value) => setState(() => _vibrationEnabled = value),
+                      value: settings.vibrationEnabled,
+                      onChanged: (value) => settings.setVibrationEnabled(value),
                     ),
                   ],
                 ),
@@ -77,19 +79,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _buildSectionTitle('APPEARANCE'),
               const SizedBox(height: 12),
               _buildGlassCard(
-                child: _buildSwitchRow(
-                  icon: LucideIcons.moon,
-                  label: 'Dark Mode',
-                  subtitle: 'Use dark theme',
-                  value: _darkMode,
-                  onChanged: (value) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Light mode coming soon!'),
-                        backgroundColor: AppTheme.accentGreen,
-                      ),
-                    );
-                  },
+                child: Column(
+                  children: [
+                    _buildSwitchRow(
+                      icon: LucideIcons.moon,
+                      label: 'Dark Mode',
+                      subtitle: 'Use dark theme',
+                      value: settings.darkMode,
+                      onChanged: (value) {
+                        settings.setDarkMode(value);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(value ? 'Dark mode enabled' : 'Light mode coming soon!'),
+                            backgroundColor: AppTheme.accentGreen,
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(color: Colors.white12, height: 24),
+                    _buildMenuRow(
+                      icon: LucideIcons.languages,
+                      label: 'Language',
+                      subtitle: _getLanguageName(settings.language),
+                      onTap: () => _showLanguageSelector(settings),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -110,8 +124,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       icon: LucideIcons.mapPin,
                       label: 'Location Services',
                       subtitle: 'Allow access to your location',
-                      value: _locationEnabled,
-                      onChanged: (value) => setState(() => _locationEnabled = value),
+                      value: settings.locationEnabled,
+                      onChanged: (value) => settings.setLocationEnabled(value),
                     ),
                     const Divider(color: Colors.white12, height: 24),
                     _buildMenuRow(
@@ -137,22 +151,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _buildMenuRow(
                       icon: LucideIcons.download,
                       label: 'Download My Data',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Data download request sent!'),
-                            backgroundColor: AppTheme.accentGreen,
-                          ),
-                        );
-                      },
+                      subtitle: 'Export your personal data',
+                      onTap: () => _exportUserData(settings),
+                      isLoading: _isExporting,
                     ),
                     const Divider(color: Colors.white12, height: 24),
                     _buildMenuRow(
                       icon: LucideIcons.trash2,
                       label: 'Delete Account',
+                      subtitle: 'Permanently delete your account',
                       iconColor: Colors.red,
                       labelColor: Colors.red,
-                      onTap: () => _showDeleteAccountDialog(),
+                      onTap: () => _showDeleteAccountDialog(settings),
                     ),
                   ],
                 ),
@@ -164,7 +174,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
   
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(SettingsService settings) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -178,24 +188,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: LucideIcons.bell,
                 label: 'Push Notifications',
                 subtitle: 'Receive push notifications',
-                value: _notificationsEnabled,
-                onChanged: (value) => setState(() => _notificationsEnabled = value),
+                value: settings.notificationsEnabled,
+                onChanged: (value) => settings.setNotificationsEnabled(value),
               ),
               const Divider(color: Colors.white12, height: 24),
               _buildSwitchRow(
                 icon: LucideIcons.volume2,
                 label: 'Sound',
                 subtitle: 'Play sound for notifications',
-                value: _soundEnabled,
-                onChanged: (value) => setState(() => _soundEnabled = value),
+                value: settings.soundEnabled,
+                onChanged: (value) => settings.setSoundEnabled(value),
               ),
               const Divider(color: Colors.white12, height: 24),
               _buildSwitchRow(
                 icon: LucideIcons.smartphone,
                 label: 'Vibration',
                 subtitle: 'Vibrate for notifications',
-                value: _vibrationEnabled,
-                onChanged: (value) => setState(() => _vibrationEnabled = value),
+                value: settings.vibrationEnabled,
+                onChanged: (value) => settings.setVibrationEnabled(value),
               ),
             ],
           ),
@@ -204,19 +214,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _buildSectionTitle('APPEARANCE'),
         const SizedBox(height: 12),
         _buildGlassCard(
-          child: _buildSwitchRow(
-            icon: LucideIcons.moon,
-            label: 'Dark Mode',
-            subtitle: 'Use dark theme',
-            value: _darkMode,
-            onChanged: (value) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Light mode coming soon!'),
-                  backgroundColor: AppTheme.accentGreen,
-                ),
-              );
-            },
+          child: Column(
+            children: [
+              _buildSwitchRow(
+                icon: LucideIcons.moon,
+                label: 'Dark Mode',
+                subtitle: 'Use dark theme',
+                value: settings.darkMode,
+                onChanged: (value) {
+                  settings.setDarkMode(value);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(value ? 'Dark mode enabled' : 'Light mode coming soon!'),
+                      backgroundColor: AppTheme.accentGreen,
+                    ),
+                  );
+                },
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildMenuRow(
+                icon: LucideIcons.languages,
+                label: 'Language',
+                subtitle: _getLanguageName(settings.language),
+                onTap: () => _showLanguageSelector(settings),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 30),
@@ -229,8 +251,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: LucideIcons.mapPin,
                 label: 'Location Services',
                 subtitle: 'Allow access to your location',
-                value: _locationEnabled,
-                onChanged: (value) => setState(() => _locationEnabled = value),
+                value: settings.locationEnabled,
+                onChanged: (value) => settings.setLocationEnabled(value),
               ),
               const Divider(color: Colors.white12, height: 24),
               _buildMenuRow(
@@ -256,28 +278,197 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _buildMenuRow(
                 icon: LucideIcons.download,
                 label: 'Download My Data',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Data download request sent!'),
-                      backgroundColor: AppTheme.accentGreen,
-                    ),
-                  );
-                },
+                subtitle: 'Export your personal data',
+                onTap: () => _exportUserData(settings),
+                isLoading: _isExporting,
               ),
               const Divider(color: Colors.white12, height: 24),
               _buildMenuRow(
                 icon: LucideIcons.trash2,
                 label: 'Delete Account',
+                subtitle: 'Permanently delete your account',
                 iconColor: Colors.red,
                 labelColor: Colors.red,
-                onTap: () => _showDeleteAccountDialog(),
+                onTap: () => _showDeleteAccountDialog(settings),
               ),
             ],
           ),
         ),
         const SizedBox(height: 40),
       ],
+    );
+  }
+  
+  String _getLanguageName(String code) {
+    final lang = supportedLanguages.firstWhere(
+      (l) => l.code == code,
+      orElse: () => supportedLanguages.first,
+    );
+    return '${lang.nativeName} (${lang.name})';
+  }
+  
+  void _showLanguageSelector(SettingsService settings) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.darkGray,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Select Language',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'More languages coming soon!',
+              style: TextStyle(color: Colors.grey[500], fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            ...supportedLanguages.map((lang) => ListTile(
+              leading: Icon(
+                settings.language == lang.code ? LucideIcons.circleCheck : LucideIcons.circle,
+                color: settings.language == lang.code ? AppTheme.accentGreen : Colors.grey,
+              ),
+              title: Text(lang.nativeName, style: const TextStyle(color: Colors.white)),
+              subtitle: Text(lang.name, style: TextStyle(color: Colors.grey[500])),
+              trailing: lang.code != 'en' 
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('Coming Soon', style: TextStyle(color: Colors.orange, fontSize: 10)),
+                    )
+                  : null,
+              onTap: () {
+                if (lang.code == 'en') {
+                  settings.setLanguage(lang.code);
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${lang.name} support coming soon!'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              },
+            )),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _exportUserData(SettingsService settings) async {
+    setState(() => _isExporting = true);
+    
+    try {
+      final storageService = ref.read(storageServiceProvider);
+      final userId = await storageService.getUserId();
+      
+      if (userId == null) {
+        throw Exception('User not logged in');
+      }
+      
+      final data = await settings.exportUserData(userId);
+      final jsonString = const JsonEncoder.withIndent('  ').convert(data);
+      
+      // Copy to clipboard (web-friendly approach)
+      await Clipboard.setData(ClipboardData(text: jsonString));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data exported and copied to clipboard!'),
+            backgroundColor: AppTheme.accentGreen,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        // Show data preview dialog
+        _showDataPreviewDialog(jsonString);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+  
+  void _showDataPreviewDialog(String jsonData) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.darkGray,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(LucideIcons.fileJson, color: AppTheme.accentGreen),
+            SizedBox(width: 12),
+            Text('Your Data Export', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: SingleChildScrollView(
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                jsonData,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jsonData));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Copied to clipboard!'), backgroundColor: AppTheme.accentGreen),
+              );
+            },
+            icon: const Icon(LucideIcons.copy, size: 16),
+            label: const Text('Copy Again'),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentGreen),
+          ),
+        ],
+      ),
     );
   }
   
@@ -391,40 +582,148 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _showDeleteAccountDialog() {
+  void _showDeleteAccountDialog(SettingsService settings) {
+    final confirmController = TextEditingController();
+    
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.darkGray,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Delete Account',
-          style: TextStyle(color: Colors.red),
-        ),
-        content: const Text(
-          'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppTheme.darkGray,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(LucideIcons.triangleAlert, color: Colors.red, size: 28),
+              const SizedBox(width: 12),
+              const Text('Delete Account', style: TextStyle(color: Colors.red)),
+            ],
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Account deletion request submitted. You will receive a confirmation email.'),
-                  backgroundColor: Colors.orange,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This action is permanent and cannot be undone.',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'All your data will be permanently deleted, including:',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              _buildDeletionItem('Your profile and personal information'),
+              _buildDeletionItem('All part requests and history'),
+              _buildDeletionItem('Chat messages and conversations'),
+              _buildDeletionItem('Saved vehicles and addresses'),
+              _buildDeletionItem('Notification history'),
+              const SizedBox(height: 16),
+              const Text(
+                'Type "DELETE" to confirm:',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirmController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'DELETE',
+                  hintStyle: TextStyle(color: Colors.grey[700]),
+                  filled: true,
+                  fillColor: Colors.black.withOpacity(0.3),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
-              );
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: confirmController.text.toUpperCase() == 'DELETE' && !_isDeleting
+                  ? () => _performAccountDeletion(dialogContext, settings)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                disabledBackgroundColor: Colors.grey[800],
+              ),
+              child: _isDeleting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Text('Delete My Account'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildDeletionItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, top: 4),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.x, color: Colors.red, size: 14),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: TextStyle(color: Colors.grey[400], fontSize: 13))),
         ],
       ),
     );
+  }
+  
+  Future<void> _performAccountDeletion(BuildContext dialogContext, SettingsService settings) async {
+    setState(() => _isDeleting = true);
+    
+    try {
+      final storageService = ref.read(storageServiceProvider);
+      final userId = await storageService.getUserId();
+      
+      if (userId == null) {
+        throw Exception('User not logged in');
+      }
+      
+      // Perform deletion
+      await settings.deleteAccount(userId);
+      
+      // Close dialog
+      if (dialogContext.mounted) {
+        Navigator.pop(dialogContext);
+      }
+      
+      // Navigate to login and show success message
+      if (mounted) {
+        context.go('/login');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your account has been permanently deleted.'),
+            backgroundColor: AppTheme.accentGreen,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Deletion failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+      }
+    }
   }
 
   Widget _buildGlassCard({required Widget child}) {
@@ -498,11 +797,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    String? subtitle,
     Color? iconColor,
     Color? labelColor,
+    bool isLoading = false,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       child: Row(
         children: [
           Container(
@@ -515,15 +816,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: labelColor ?? Colors.white,
-                fontSize: 16,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: labelColor ?? Colors.white,
+                    fontSize: 16,
+                  ),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: (labelColor ?? Colors.grey).withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
             ),
           ),
-          Icon(LucideIcons.chevronRight, color: labelColor ?? Colors.grey, size: 20),
+          if (isLoading)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(color: AppTheme.accentGreen, strokeWidth: 2),
+            )
+          else
+            Icon(LucideIcons.chevronRight, color: labelColor ?? Colors.grey, size: 20),
         ],
       ),
     );
