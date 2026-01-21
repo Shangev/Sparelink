@@ -447,33 +447,17 @@ class _ResponsiveShellState extends ConsumerState<ResponsiveShell> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: AppTheme.accentGreen,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.accentGreen.withOpacity(0.4),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(
-              icon,
-              color: Colors.black,
-              size: 28,
-            ),
+          Icon(
+            icon,
+            color: isActive ? AppTheme.accentGreen : Colors.white38,
+            size: 26,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              color: isActive ? AppTheme.accentGreen : Colors.white70,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
+              color: isActive ? AppTheme.accentGreen : Colors.white38,
+              fontSize: 12,
             ),
           ),
         ],
