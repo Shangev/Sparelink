@@ -61,14 +61,14 @@ class _ResponsiveShellState extends ConsumerState<ResponsiveShell> {
       ),
       NavItem(
         path: '/my-requests',
-        label: 'My Requests',
+        label: 'My List',
         icon: LucideIcons.clipboardList,
         activeIcon: LucideIcons.clipboardList,
         badgeCount: badges['requests'],
       ),
       NavItem(
         path: '/request-part',
-        label: 'Request Part',
+        label: 'Request',
         icon: LucideIcons.plus,
         activeIcon: LucideIcons.plus,
       ),
