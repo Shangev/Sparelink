@@ -7,6 +7,7 @@ import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
 import '../../../shared/widgets/skeleton_loader.dart';
+import '../../../shared/widgets/empty_state.dart';
 
 /// Notifications Screen - Shows all user notifications
 /// Categories: Quotes, Orders, Messages, System
@@ -281,68 +282,37 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   Widget _buildEmptyState() {
-    String message;
-    IconData icon;
+    // Use custom message based on filter, but leverage EmptyState widget
+    if (_selectedFilter == 'all') {
+      return EmptyState(
+        type: EmptyStateType.noNotifications,
+        actionLabel: 'Request a Part',
+        onAction: () => context.push('/request-part'),
+      );
+    }
     
+    // Custom messages for filtered views
+    String message;
     switch (_selectedFilter) {
       case 'quote':
-        message = 'No offer notifications yet.\nYou\'ll be notified when shops respond to your requests.';
-        icon = LucideIcons.tag;
+        message = 'No offer notifications yet. You\'ll be notified when shops respond to your requests.';
         break;
-      case 'orders':
-        message = 'No order notifications yet.\nOrder updates will appear here.';
-        icon = LucideIcons.package;
+      case 'order':
+        message = 'No order notifications yet. Order updates will appear here.';
         break;
-      case 'messages':
-        message = 'No message notifications yet.\nNew messages from shops will appear here.';
-        icon = LucideIcons.messageCircle;
+      case 'message':
+        message = 'No message notifications yet. New messages from shops will appear here.';
         break;
       default:
-        message = 'No notifications yet.\nWhen you request parts or receive quotes,\nnotifications will appear here.';
-        icon = LucideIcons.bellOff;
+        message = 'No notifications in this category.';
     }
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: _cardBackground,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: _subtitleGray, size: 48),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _subtitleGray,
-                fontSize: 15,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => context.push('/request-part'),
-              icon: const Icon(LucideIcons.search),
-              label: const Text('Request a Part'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _accentGreen,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    
+    return EmptyState(
+      type: EmptyStateType.noNotifications,
+      title: 'No ${_filters.firstWhere((f) => f['id'] == _selectedFilter)['label']} Notifications',
+      message: message,
+      actionLabel: 'Request a Part',
+      onAction: () => context.push('/request-part'),
     );
   }
 

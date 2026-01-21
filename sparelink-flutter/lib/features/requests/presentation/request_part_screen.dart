@@ -9,7 +9,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/vehicle_service.dart';
 import '../../../shared/services/draft_service.dart';
+import '../../../shared/services/ux_service.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
+import '../../../shared/widgets/app_rating_dialog.dart';
 
 class RequestPartScreen extends ConsumerStatefulWidget {
   const RequestPartScreen({super.key});
@@ -564,15 +566,33 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
       );
 
       if (mounted) {
+        // Success haptic feedback
+        await UxService.successHaptic();
+        
+        // Increment request count for app rating prompt
+        await UxService.incrementRequestCount();
+        
+        // Clear the draft since request was submitted
+        await ref.read(draftServiceProvider).clearDraft();
+        
         if (shopsFound) {
           // Navigate to request chats to see shop responses
           context.go('/request-chats/$requestId');
+          
+          // Show app rating prompt after a delay (if conditions met)
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              AppRatingDialog.showIfNeeded(context);
+            }
+          });
         } else {
           // No shops found - show message and stay on page
           _showNoShopsDialog();
         }
       }
     } catch (e) {
+      // Error haptic feedback
+      await UxService.errorHaptic();
       _showError('Failed to submit request: ${e.toString()}');
     } finally {
       if (mounted) {

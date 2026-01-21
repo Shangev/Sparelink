@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../shared/models/marketplace.dart';
 import '../../../shared/services/supabase_service.dart';
+import '../../../shared/services/offline_cache_service.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
 import '../../../shared/widgets/skeleton_loader.dart';
+import '../../../shared/widgets/empty_state.dart';
 
 /// My Requests Screen
 /// Clean dark-mode list view of requests with thumbnails, titles, shop details, and status badges
@@ -109,10 +111,14 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
     }).toList();
   }
 
+  bool _isOffline = false;
+  String? _cacheAge;
+
   Future<void> _loadRequests() async {
     setState(() {
       _isLoading = true;
       _error = null;
+      _isOffline = false;
     });
     
     try {
@@ -134,12 +140,25 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
       _requests = requestsData.map((data) => PartRequest.fromJson(data)).toList();
       _applyFilters();
       
+      // Cache for offline use
+      await OfflineCacheService.cacheRequests(requestsData);
+      
       setState(() => _isLoading = false);
     } catch (e) {
-      setState(() {
-        _error = 'Failed to load requests: ${e.toString()}';
-        _isLoading = false;
-      });
+      // Try to load from cache if network fails
+      final cachedData = await OfflineCacheService.getCachedRequests();
+      if (cachedData != null && cachedData.isNotEmpty) {
+        _requests = cachedData.map((data) => PartRequest.fromJson(data)).toList();
+        _applyFilters();
+        _isOffline = true;
+        _cacheAge = await OfflineCacheService.getCacheAge();
+        setState(() => _isLoading = false);
+      } else {
+        setState(() {
+          _error = 'Failed to load requests: ${e.toString()}';
+          _isLoading = false;
+        });
+      }
     }
   }
   
@@ -380,6 +399,9 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
           children: [
             // Header
             _buildHeader(),
+            
+            // Offline Banner
+            _buildOfflineBanner(),
             
             // Title Row with Selection Mode Toggle
             Padding(
@@ -657,53 +679,40 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              LucideIcons.clipboardList,
-              size: 80,
-              color: Colors.white.withOpacity(0.2),
+    return EmptyState(
+      type: EmptyStateType.noRequests,
+      actionLabel: 'Request a Part',
+      onAction: () => context.push('/request-part'),
+    );
+  }
+  
+  Widget _buildOfflineBanner() {
+    if (!_isOffline) return const SizedBox.shrink();
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.wifiOff, size: 18, color: Colors.orange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Offline mode${_cacheAge != null ? ' • Updated $_cacheAge' : ''}',
+              style: const TextStyle(color: Colors.orange, fontSize: 13),
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'No requests yet',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Tap the button below to request your first part!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () => context.push('/camera'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28),
-                ),
-              ),
-              child: const Text(
-                'Request a Part',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
+          ),
+          GestureDetector(
+            onTap: _loadRequests,
+            child: const Text('Retry', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+          ),
+        ],
       ),
     );
   }

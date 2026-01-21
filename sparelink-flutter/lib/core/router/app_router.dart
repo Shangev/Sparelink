@@ -29,6 +29,7 @@ import '../../features/profile/presentation/settings_screen.dart';
 import '../../features/profile/presentation/help_support_screen.dart';
 import '../../features/profile/presentation/about_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
+import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../shared/widgets/responsive_shell.dart';
 import '../theme/app_theme.dart';
 
@@ -114,6 +115,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      // Onboarding (first-time users)
+      GoRoute(
+        path: '/onboarding',
+        name: 'onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+      ),
+      
       // Auth Routes (outside shell - no sidebar/nav)
       GoRoute(
         path: '/login',
