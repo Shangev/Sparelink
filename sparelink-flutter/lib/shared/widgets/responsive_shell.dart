@@ -60,17 +60,17 @@ class _ResponsiveShellState extends ConsumerState<ResponsiveShell> {
         activeIcon: LucideIcons.house,
       ),
       NavItem(
-        path: '/request-part',
-        label: 'Request Part',
-        icon: LucideIcons.plus,
-        activeIcon: LucideIcons.plus,
-      ),
-      NavItem(
         path: '/my-requests',
         label: 'My Requests',
         icon: LucideIcons.clipboardList,
         activeIcon: LucideIcons.clipboardList,
         badgeCount: badges['requests'],
+      ),
+      NavItem(
+        path: '/request-part',
+        label: 'Request Part',
+        icon: LucideIcons.plus,
+        activeIcon: LucideIcons.plus,
       ),
       NavItem(
         path: '/chats',
@@ -406,10 +406,24 @@ class _ResponsiveShellState extends ConsumerState<ResponsiveShell> {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: _navItems.map((item) {
+        children: _navItems.asMap().entries.map((entry) {
+          final index = entry.key;
+          final item = entry.value;
           final isActive = _isPathActive(item.path);
           // Use Grid icon for Home on mobile
           final icon = item.path == '/' ? LucideIcons.layoutGrid : item.icon;
+          // Center item (index 2) is the "Request Part" button - make it visually distinct
+          final isCenterAction = index == 2;
+          
+          if (isCenterAction) {
+            return _buildCenterActionButton(
+              icon: icon,
+              label: item.label,
+              isActive: isActive,
+              onTap: () => context.go(item.path),
+            );
+          }
+          
           return _buildNavItem(
             icon: icon,
             label: item.label,
@@ -418,6 +432,51 @@ class _ResponsiveShellState extends ConsumerState<ResponsiveShell> {
             onTap: () => context.go(item.path),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildCenterActionButton({
+    required IconData icon,
+    required String label,
+    bool isActive = false,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppTheme.accentGreen,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.accentGreen.withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              color: Colors.black,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isActive ? AppTheme.accentGreen : Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
