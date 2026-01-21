@@ -184,3 +184,119 @@ class SkeletonSearchBar extends StatelessWidget {
     );
   }
 }
+
+/// Skeleton for request list item (My List screen)
+class SkeletonRequestCard extends StatelessWidget {
+  const SkeletonRequestCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Thumbnail placeholder
+          const SkeletonLoader(width: 60, height: 60, borderRadius: 8),
+          const SizedBox(width: 12),
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                SkeletonLoader(height: 16, width: 140),
+                SizedBox(height: 8),
+                SkeletonLoader(height: 13, width: 100),
+                SizedBox(height: 4),
+                SkeletonLoader(height: 12, width: 70),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Status badge placeholder
+          const SkeletonLoader(width: 70, height: 24, borderRadius: 12),
+        ],
+      ),
+    );
+  }
+}
+
+/// Skeleton for notification item
+class SkeletonNotificationItem extends StatelessWidget {
+  const SkeletonNotificationItem({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const SkeletonLoader(width: 44, height: 44, borderRadius: 12),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                SkeletonLoader(height: 14, width: 180),
+                SizedBox(height: 6),
+                SkeletonLoader(height: 12, width: 120),
+              ],
+            ),
+          ),
+          const SkeletonLoader(width: 50, height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+/// Skeleton for chat list item
+class SkeletonChatItem extends StatelessWidget {
+  const SkeletonChatItem({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const SkeletonLoader(width: 50, height: 50, isCircle: true),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                SkeletonLoader(height: 16, width: 140),
+                SizedBox(height: 6),
+                SkeletonLoader(height: 13, width: 200),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: const [
+              SkeletonLoader(width: 40, height: 10),
+              SizedBox(height: 8),
+              SkeletonLoader(width: 20, height: 20, isCircle: true),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

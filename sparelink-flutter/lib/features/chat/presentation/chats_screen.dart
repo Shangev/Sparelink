@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
+import '../../../shared/widgets/skeleton_loader.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -602,8 +603,10 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
 
   Widget _buildChatList({required bool isDesktop}) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+      return ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: 6,
+        itemBuilder: (context, index) => const SkeletonChatItem(),
       );
     }
 

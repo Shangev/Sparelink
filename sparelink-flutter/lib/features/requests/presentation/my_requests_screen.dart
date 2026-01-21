@@ -6,6 +6,7 @@ import '../../../shared/models/marketplace.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
+import '../../../shared/widgets/skeleton_loader.dart';
 
 /// My Requests Screen
 /// Clean dark-mode list view of requests with thumbnails, titles, shop details, and status badges
@@ -530,9 +531,7 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
             // Content
             Expanded(
               child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    )
+                  ? _buildSkeletonList()
                   : _error != null
                       ? _buildErrorState()
                       : _requests.isEmpty
@@ -548,6 +547,14 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
     );
   }
   
+  Widget _buildSkeletonList() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: 6, // Show 6 skeleton items
+      itemBuilder: (context, index) => const SkeletonRequestCard(),
+    );
+  }
+
   Widget _buildNoResultsState() {
     return Center(
       child: Column(

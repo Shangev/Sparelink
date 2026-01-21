@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
+import '../../../shared/widgets/skeleton_loader.dart';
 
 /// Notifications Screen - Shows all user notifications
 /// Categories: Quotes, Orders, Messages, System
@@ -157,7 +158,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 _buildFilterTabs(),
                 Expanded(
                   child: _isLoading
-                      ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                      ? _buildSkeletonList()
                       : _filteredNotifications.isEmpty
                           ? _buildEmptyState()
                           : _buildNotificationsList(),
@@ -268,6 +269,14 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildSkeletonList() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 8, // Show 8 skeleton items
+      itemBuilder: (context, index) => const SkeletonNotificationItem(),
     );
   }
 
