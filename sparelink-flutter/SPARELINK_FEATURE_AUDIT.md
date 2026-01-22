@@ -180,10 +180,10 @@
 
 | Status | Issue | Priority | Description |
 |--------|-------|----------|-------------|
-| ❌ | No Quote Templates | High | Must enter prices every time |
-| ❌ | No Pricing History | Medium | Can't see what you quoted before |
-| ❌ | No Competitor Insights | Low | Don't know market rates |
-| ❌ | No Quote Analytics | Medium | No win/loss rate tracking |
+| ✅ | No Quote Templates | High | `quotes/page.tsx` - Saved Templates tab with create/edit/delete, stores name, category, price, condition, warranty, message in localStorage |
+| ✅ | No Pricing History | Medium | `quotes/page.tsx` - Search History panel to find past quotes by part or vehicle, shows date, price, and outcome |
+| ✅ | No Quote Analytics | Medium | `quotes/page.tsx` - Analytics tab with Win/Loss pie chart, total sent/accepted/rejected/pending stats, revenue tracking |
+| ✅ | No Competitor Insights | Low | `quotes/page.tsx` - Market Insights tab showing your avg vs market avg per category with visual comparison bars |
 
 ### 5. ORDERS PAGE
 
@@ -349,6 +349,10 @@
 | 2026-01-22 | Request Priority | Shop Dashboard | `requests/page.tsx` - Star/flag system, priority requests sorted to top, persisted in localStorage |
 | 2026-01-22 | Auto-Archive | Shop Dashboard | `requests/page.tsx` - Requests older than 30 days auto-archived, manual archive/unarchive, separate view |
 | 2026-01-22 | Export to CSV | Shop Dashboard | `requests/page.tsx` - Export selected or all requests to CSV with ID, Vehicle, Part, Status, Date |
+| 2026-01-22 | Quote Templates | Shop Dashboard | `quotes/page.tsx` - Saved Templates tab with CRUD operations, stores in localStorage for quick quoting |
+| 2026-01-22 | Pricing History | Shop Dashboard | `quotes/page.tsx` - Search past quotes by part/vehicle, displays date, price, outcome in table format |
+| 2026-01-22 | Quote Analytics | Shop Dashboard | `quotes/page.tsx` - Analytics tab with Win/Loss pie chart, stats cards, revenue tracking |
+| 2026-01-22 | Competitor Insights | Shop Dashboard | `quotes/page.tsx` - Market Insights tab with anonymized market avg pricing per category |
 
 ---
 
@@ -367,4 +371,5 @@
 | 2026-01-22 | Completed all 3 Shop Dashboard Authentication items: Secure SSO (database tokens, no URL passing), Session Persistence (localStorage + auto-refresh), Multi-device Management (Security tab with revoke) |
 | 2026-01-22 | Completed all 4 Shop Dashboard Home items: Analytics Dashboard (performance metrics), Today's Summary (4 stat cards), Alerts/Warnings (expiring quotes, response warnings), Quick Actions (navigation shortcuts) |
 | 2026-01-22 | Completed all 5 Shop Dashboard Requests Page items: Advanced Filtering (date/vehicle/part), Bulk Quote Sending, Request Priority/Star system, Auto-Archive (30 days), Export to CSV |
+| 2026-01-22 | Completed all 4 Shop Dashboard Quotes Page items: Quote Templates (saved presets), Pricing History (search past quotes), Quote Analytics (win/loss dashboard), Competitor Insights (market pricing) |
 
