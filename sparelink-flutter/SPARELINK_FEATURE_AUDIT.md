@@ -198,10 +198,10 @@
 
 | Status | Issue | Priority | Description |
 |--------|-------|----------|-------------|
-| ❌ | No Quick Replies | High | Should have template messages |
-| ❌ | No Image Sending | High | Can't send part photos |
-| ❌ | No Chat Assignment | Medium | Can't assign chats to staff |
-| ❌ | No Canned Responses | Medium | No saved message templates |
+| ✅ | No Quick Replies | High | `chats/page.tsx` - Quick replies bar with 6 common phrases (In stock, Ready for collection, Part shipped, etc.) |
+| ✅ | No Image Sending | High | `chats/page.tsx` - Image upload button with Supabase storage, displays images in chat with lightbox preview |
+| ✅ | No Chat Assignment | Medium | `chats/page.tsx` - Assign button in chat header with 4 staff members, assignment badge displayed |
+| ✅ | No Canned Responses | Medium | `chats/page.tsx` - Message Templates modal with CRUD, 5 categories, persisted in localStorage |
 
 ### 7. SETTINGS
 
@@ -357,6 +357,10 @@
 | 2026-01-22 | Tracking Integration | Shop Dashboard | `orders/page.tsx` - Tracking number field with auto-status update, displayed on order cards |
 | 2026-01-22 | Driver Assignment | Shop Dashboard | `orders/page.tsx` - Driver selection modal with internal drivers and external couriers |
 | 2026-01-22 | Batch Status Update | Shop Dashboard | `orders/page.tsx` - Checkbox selection with bulk actions toolbar for multi-order updates |
+| 2026-01-22 | Image Sending | Shop Dashboard | `chats/page.tsx` - Image upload with Supabase storage, inline display with lightbox preview |
+| 2026-01-22 | Quick Replies | Shop Dashboard | `chats/page.tsx` - Quick replies bar with 6 common phrases for fast responses |
+| 2026-01-22 | Canned Responses | Shop Dashboard | `chats/page.tsx` - Message Templates modal with CRUD, 5 categories, localStorage persistence |
+| 2026-01-22 | Chat Assignment | Shop Dashboard | `chats/page.tsx` - Staff assignment modal with 4 team members, badge in chat header |
 
 ---
 
@@ -377,4 +381,5 @@
 | 2026-01-22 | Completed all 5 Shop Dashboard Requests Page items: Advanced Filtering (date/vehicle/part), Bulk Quote Sending, Request Priority/Star system, Auto-Archive (30 days), Export to CSV |
 | 2026-01-22 | Completed all 4 Shop Dashboard Quotes Page items: Quote Templates (saved presets), Pricing History (search past quotes), Quote Analytics (win/loss dashboard), Competitor Insights (market pricing) |
 | 2026-01-22 | Completed all 4 Shop Dashboard Orders Page items: Shipping Label Print (PDF generator), Tracking Integration (tracking numbers), Driver Assignment (internal/external), Batch Status Update (bulk actions) |
+| 2026-01-22 | Completed all 4 Shop Dashboard Chat System items: Image Sending (Supabase upload), Quick Replies (6 phrases bar), Canned Responses (templates modal), Chat Assignment (staff selection) |
 

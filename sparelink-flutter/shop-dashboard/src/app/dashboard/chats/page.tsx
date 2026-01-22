@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { MessageSquare, Clock, Car, User, ChevronRight, Send, ArrowUp, Tag, Package, Truck, ZoomIn, X, Image as ImageIcon, Check, CheckCheck } from "lucide-react"
+import { MessageSquare, Clock, Car, User, ChevronRight, Send, ArrowUp, Tag, Package, Truck, ZoomIn, X, Image as ImageIcon, Check, CheckCheck, Zap, FileText, UserPlus, Plus, Trash2, Settings, Upload, Loader2 } from "lucide-react"
 
 interface RequestChat {
   id: string
@@ -14,6 +14,7 @@ interface RequestChat {
   delivery_fee: number | null
   created_at: string
   updated_at: string
+  assigned_staff?: string | null
   part_requests?: {
     id: string
     vehicle_make: string
@@ -51,7 +52,48 @@ interface Message {
   sender_id: string
   text: string
   sent_at: string
+  image_url?: string | null
 }
+
+interface CannedResponse {
+  id: string
+  title: string
+  message: string
+  category: 'greeting' | 'stock' | 'shipping' | 'warranty' | 'other'
+}
+
+interface StaffMember {
+  id: string
+  name: string
+  role: string
+}
+
+// Default quick replies
+const QUICK_REPLIES = [
+  "In stock ✓",
+  "Ready for collection",
+  "Part shipped today",
+  "Will check and confirm",
+  "Please send more photos",
+  "Price confirmed",
+]
+
+// Default staff members (in real app, would come from database)
+const STAFF_MEMBERS: StaffMember[] = [
+  { id: 'staff1', name: 'Manager', role: 'Shop Manager' },
+  { id: 'staff2', name: 'Sales Team', role: 'Sales' },
+  { id: 'staff3', name: 'Parts Specialist', role: 'Technical' },
+  { id: 'staff4', name: 'Customer Support', role: 'Support' },
+]
+
+// Default canned responses
+const DEFAULT_CANNED_RESPONSES: CannedResponse[] = [
+  { id: '1', title: 'Greeting', message: 'Hi! Thank you for your inquiry. How can I help you today?', category: 'greeting' },
+  { id: '2', title: 'In Stock', message: 'Great news! We have this part in stock and ready for immediate dispatch.', category: 'stock' },
+  { id: '3', title: 'Out of Stock', message: 'Unfortunately, this part is currently out of stock. We can order it for you - delivery typically takes 3-5 business days.', category: 'stock' },
+  { id: '4', title: 'Shipping Policy', message: 'We offer same-day delivery within the city (R140 flat rate). Orders placed before 2pm ship the same day.', category: 'shipping' },
+  { id: '5', title: 'Warranty Info', message: 'All our new parts come with a 12-month warranty. Used parts have a 3-month warranty. Warranty covers manufacturing defects only.', category: 'warranty' },
+]
 
 export default function ChatsPage() {
   const searchParams = useSearchParams()
@@ -67,6 +109,17 @@ export default function ChatsPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [showJumpToTop, setShowJumpToTop] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  
+  // New state for features
+  const [showQuickReplies, setShowQuickReplies] = useState(true)
+  const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>(DEFAULT_CANNED_RESPONSES)
+  const [showCannedModal, setShowCannedModal] = useState(false)
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [editingCanned, setEditingCanned] = useState<CannedResponse | null>(null)
+  const [cannedForm, setCannedForm] = useState({ title: '', message: '', category: 'other' as CannedResponse['category'] })
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [chatAssignments, setChatAssignments] = useState<{ [chatId: string]: string }>({})
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const pinnedOfferRef = useRef<HTMLDivElement>(null)
@@ -348,6 +401,169 @@ export default function ChatsPage() {
     }
   }
 
+  // Load canned responses and assignments from localStorage
+  useEffect(() => {
+    try {
+      const savedCanned = localStorage.getItem('sparelink-canned-responses')
+      if (savedCanned) setCannedResponses(JSON.parse(savedCanned))
+      
+      const savedAssignments = localStorage.getItem('sparelink-chat-assignments')
+      if (savedAssignments) setChatAssignments(JSON.parse(savedAssignments))
+    } catch (e) {
+      console.error('Error loading from localStorage:', e)
+    }
+  }, [])
+
+  // Save canned response
+  const handleSaveCanned = () => {
+    if (!cannedForm.title || !cannedForm.message) {
+      alert("Please fill in title and message")
+      return
+    }
+
+    let newResponses: CannedResponse[]
+    if (editingCanned) {
+      newResponses = cannedResponses.map(r => 
+        r.id === editingCanned.id ? { ...cannedForm, id: editingCanned.id } : r
+      )
+    } else {
+      newResponses = [...cannedResponses, { ...cannedForm, id: Date.now().toString() }]
+    }
+
+    setCannedResponses(newResponses)
+    localStorage.setItem('sparelink-canned-responses', JSON.stringify(newResponses))
+    setShowCannedModal(false)
+    setEditingCanned(null)
+    setCannedForm({ title: '', message: '', category: 'other' })
+  }
+
+  // Delete canned response
+  const handleDeleteCanned = (id: string) => {
+    if (confirm("Delete this template?")) {
+      const newResponses = cannedResponses.filter(r => r.id !== id)
+      setCannedResponses(newResponses)
+      localStorage.setItem('sparelink-canned-responses', JSON.stringify(newResponses))
+    }
+  }
+
+  // Use canned response
+  const useCannedResponse = (message: string) => {
+    setNewMessage(message)
+    setShowCannedModal(false)
+  }
+
+  // Use quick reply
+  const useQuickReply = (reply: string) => {
+    setNewMessage(reply)
+  }
+
+  // Assign chat to staff
+  const handleAssignChat = (chatId: string, staffId: string) => {
+    const newAssignments = { ...chatAssignments, [chatId]: staffId }
+    setChatAssignments(newAssignments)
+    localStorage.setItem('sparelink-chat-assignments', JSON.stringify(newAssignments))
+    setShowAssignModal(false)
+  }
+
+  // Get staff name by ID
+  const getStaffName = (staffId: string | undefined) => {
+    if (!staffId) return null
+    const staff = STAFF_MEMBERS.find(s => s.id === staffId)
+    return staff?.name || staffId
+  }
+
+  // Upload and send image
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedChat || !shopId || !userId) return
+
+    // Validate file
+    if (!file.type.startsWith('image/')) {
+      alert("Please select an image file")
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be smaller than 5MB")
+      return
+    }
+
+    setUploadingImage(true)
+    try {
+      // Upload to Supabase Storage
+      const fileExt = file.name.split('.').pop()
+      const fileName = `chat-${selectedChat.id}-${Date.now()}.${fileExt}`
+      const filePath = `chat-images/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('part-images')
+        .upload(filePath, file)
+
+      if (uploadError) {
+        console.error("Upload error:", uploadError)
+        // Try alternative bucket
+        const { error: altError } = await supabase.storage
+          .from('parts')
+          .upload(filePath, file)
+        
+        if (altError) {
+          throw new Error("Failed to upload image")
+        }
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('part-images')
+        .getPublicUrl(filePath)
+
+      const imageUrl = urlData?.publicUrl
+
+      // Get or create conversation
+      let conversationId: string
+      const { data: existingConv } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("request_id", selectedChat.request_id)
+        .eq("shop_id", shopId)
+        .single()
+
+      if (existingConv) {
+        conversationId = existingConv.id
+      } else {
+        const { data: newConv, error } = await supabase
+          .from("conversations")
+          .insert({
+            request_id: selectedChat.request_id,
+            mechanic_id: selectedChat.part_requests?.mechanic_id,
+            shop_id: shopId
+          })
+          .select()
+          .single()
+        if (error || !newConv) throw error
+        conversationId = newConv.id
+      }
+
+      // Send message with image
+      await supabase
+        .from("messages")
+        .insert({
+          conversation_id: conversationId,
+          sender_id: userId,
+          text: "📷 Image",
+          image_url: imageUrl
+        })
+
+      loadMessages(selectedChat.id)
+    } catch (error) {
+      console.error("Error uploading image:", error)
+      alert("Failed to upload image. Please try again.")
+    } finally {
+      setUploadingImage(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleDateString("en-ZA", { 
@@ -506,24 +722,43 @@ export default function ChatsPage() {
       <div className={`flex-1 flex flex-col relative ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
         {selectedChat ? (
           <>
-            {/* Chat Header - Back button only */}
-            <div className="p-4 border-b border-gray-800 bg-[#1a1a1a] flex items-center gap-3">
-              <button 
-                onClick={() => setSelectedChat(null)}
-                className="md:hidden text-gray-400 hover:text-white"
-              >
-                ← Back
-              </button>
+            {/* Chat Header */}
+            <div className="p-4 border-b border-gray-800 bg-[#1a1a1a] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setSelectedChat(null)}
+                  className="md:hidden text-gray-400 hover:text-white"
+                >
+                  ← Back
+                </button>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-accent/20 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-accent" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-white">{selectedChat.profiles?.full_name || "Mechanic"}</p>
+                    <p className="text-xs text-gray-400">
+                      {selectedChat.part_requests?.vehicle_year} {selectedChat.part_requests?.vehicle_make} {selectedChat.part_requests?.vehicle_model}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Assign & Staff Badge */}
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-accent/20 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-accent" />
-                </div>
-                <div>
-                  <p className="font-medium text-white">{selectedChat.profiles?.full_name || "Mechanic"}</p>
-                  <p className="text-xs text-gray-400">
-                    {selectedChat.part_requests?.vehicle_year} {selectedChat.part_requests?.vehicle_make} {selectedChat.part_requests?.vehicle_model}
-                  </p>
-                </div>
+                {chatAssignments[selectedChat.id] && (
+                  <span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded-full text-xs flex items-center gap-1">
+                    <UserPlus className="w-3 h-3" />
+                    {getStaffName(chatAssignments[selectedChat.id])}
+                  </span>
+                )}
+                <button
+                  onClick={() => setShowAssignModal(true)}
+                  className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-gray-300 hover:text-white rounded-lg text-sm flex items-center gap-1 transition-colors"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span className="hidden sm:inline">{chatAssignments[selectedChat.id] ? 'Reassign' : 'Assign'}</span>
+                </button>
               </div>
             </div>
 
@@ -653,7 +888,20 @@ export default function ChatsPage() {
                           : 'bg-[#2d2d2d] text-white'
                       }`}
                     >
-                      <p>{msg.text}</p>
+                      {/* Image message */}
+                      {msg.image_url && (
+                        <div 
+                          className="mb-2 cursor-pointer"
+                          onClick={() => setLightboxImage(msg.image_url!)}
+                        >
+                          <img 
+                            src={msg.image_url} 
+                            alt="Shared image"
+                            className="max-w-full max-h-48 rounded-lg object-cover"
+                          />
+                        </div>
+                      )}
+                      {msg.text && msg.text !== "📷 Image" && <p>{msg.text}</p>}
                       <p className={`text-xs mt-1 ${msg.sender_id === userId ? 'text-white/70' : 'text-gray-500'}`}>
                         {formatDate(msg.sent_at)}
                       </p>
@@ -675,9 +923,57 @@ export default function ChatsPage() {
               </button>
             )}
 
+            {/* Quick Replies Bar */}
+            {showQuickReplies && (
+              <div className="px-4 py-2 border-t border-gray-800 bg-[#0a0a0a] flex items-center gap-2 overflow-x-auto">
+                <Zap className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                {QUICK_REPLIES.map((reply, i) => (
+                  <button
+                    key={i}
+                    onClick={() => useQuickReply(reply)}
+                    className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-gray-300 hover:text-white rounded-full text-sm whitespace-nowrap transition-colors"
+                  >
+                    {reply}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Message Input */}
             <div className="p-4 border-t border-gray-800 bg-[#0a0a0a]">
               <div className="flex gap-2">
+                {/* Image Upload Button */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  className="px-3 py-3 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-lg transition-colors disabled:opacity-50"
+                  title="Send image"
+                >
+                  {uploadingImage ? (
+                    <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-5 h-5 text-gray-400" />
+                  )}
+                </button>
+
+                {/* Canned Responses Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowCannedModal(true)}
+                  className="px-3 py-3 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-lg transition-colors"
+                  title="Message templates"
+                >
+                  <FileText className="w-5 h-5 text-gray-400" />
+                </button>
+
                 <input
                   type="text"
                   value={newMessage}
@@ -725,6 +1021,188 @@ export default function ChatsPage() {
             className="max-w-full max-h-[90vh] object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* Canned Responses Modal */}
+      {showCannedModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-lg border border-gray-800 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <div>
+                <h3 className="text-xl font-semibold text-white">Message Templates</h3>
+                <p className="text-gray-400 text-sm">Quick responses for common inquiries</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setEditingCanned(null)
+                    setCannedForm({ title: '', message: '', category: 'other' })
+                    // Toggle to add form
+                    const form = document.getElementById('canned-form')
+                    if (form) form.classList.toggle('hidden')
+                  }}
+                  className="p-2 bg-accent hover:bg-accent-hover rounded-lg transition-colors"
+                  title="Add new template"
+                >
+                  <Plus className="w-5 h-5 text-white" />
+                </button>
+                <button onClick={() => setShowCannedModal(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Add/Edit Form */}
+            <div id="canned-form" className="hidden p-4 border-b border-gray-800 bg-[#2d2d2d]">
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={cannedForm.title}
+                  onChange={(e) => setCannedForm({ ...cannedForm, title: e.target.value })}
+                  placeholder="Template name..."
+                  className="w-full bg-[#1a1a1a] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+                <textarea
+                  value={cannedForm.message}
+                  onChange={(e) => setCannedForm({ ...cannedForm, message: e.target.value })}
+                  placeholder="Message content..."
+                  rows={3}
+                  className="w-full bg-[#1a1a1a] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-accent focus:outline-none resize-none"
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={cannedForm.category}
+                    onChange={(e) => setCannedForm({ ...cannedForm, category: e.target.value as CannedResponse['category'] })}
+                    className="flex-1 bg-[#1a1a1a] text-white px-4 py-2 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                  >
+                    <option value="greeting">Greeting</option>
+                    <option value="stock">Stock Status</option>
+                    <option value="shipping">Shipping</option>
+                    <option value="warranty">Warranty</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <button
+                    onClick={handleSaveCanned}
+                    className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Templates List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {cannedResponses.map((response) => (
+                <div 
+                  key={response.id}
+                  className="bg-[#2d2d2d] rounded-lg p-4 hover:bg-[#3d3d3d] transition-colors group"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="text-white font-medium">{response.title}</h4>
+                      <span className="text-xs text-gray-500 capitalize">{response.category}</span>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => {
+                          setEditingCanned(response)
+                          setCannedForm(response)
+                          const form = document.getElementById('canned-form')
+                          if (form) form.classList.remove('hidden')
+                        }}
+                        className="p-1 text-gray-400 hover:text-white"
+                        title="Edit"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCanned(response.id)}
+                        className="p-1 text-gray-400 hover:text-red-400"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-gray-400 text-sm mb-3 line-clamp-2">{response.message}</p>
+                  <button
+                    onClick={() => useCannedResponse(response.message)}
+                    className="text-accent hover:text-accent-hover text-sm font-medium"
+                  >
+                    Use this template →
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Assignment Modal */}
+      {showAssignModal && selectedChat && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-md border border-gray-800">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <div>
+                <h3 className="text-xl font-semibold text-white">Assign Chat</h3>
+                <p className="text-gray-400 text-sm">Assign this conversation to a team member</p>
+              </div>
+              <button onClick={() => setShowAssignModal(false)} className="text-gray-400 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              {/* Unassign option */}
+              {chatAssignments[selectedChat.id] && (
+                <button
+                  onClick={() => {
+                    const newAssignments = { ...chatAssignments }
+                    delete newAssignments[selectedChat.id]
+                    setChatAssignments(newAssignments)
+                    localStorage.setItem('sparelink-chat-assignments', JSON.stringify(newAssignments))
+                    setShowAssignModal(false)
+                  }}
+                  className="w-full p-3 rounded-lg text-left transition-colors bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400"
+                >
+                  <p className="font-medium">Unassign</p>
+                  <p className="text-sm opacity-70">Remove current assignment</p>
+                </button>
+              )}
+
+              {/* Staff members */}
+              {STAFF_MEMBERS.map((staff) => (
+                <button
+                  key={staff.id}
+                  onClick={() => handleAssignChat(selectedChat.id, staff.id)}
+                  className={`w-full p-3 rounded-lg text-left transition-colors flex items-center justify-between ${
+                    chatAssignments[selectedChat.id] === staff.id
+                      ? 'bg-purple-500/20 border border-purple-500'
+                      : 'bg-[#2d2d2d] border border-gray-700 hover:border-gray-600'
+                  }`}
+                >
+                  <div>
+                    <p className="text-white font-medium">{staff.name}</p>
+                    <p className="text-gray-400 text-sm">{staff.role}</p>
+                  </div>
+                  {chatAssignments[selectedChat.id] === staff.id && (
+                    <Check className="w-5 h-5 text-purple-400" />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6 border-t border-gray-800">
+              <button
+                onClick={() => setShowAssignModal(false)}
+                className="w-full px-4 py-3 border border-gray-700 text-white rounded-lg hover:bg-[#2d2d2d] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
