@@ -207,12 +207,12 @@
 
 | Status | Issue | Priority | Description |
 |--------|-------|----------|-------------|
-| ❌ | Shop address still uses Photon | Medium | Should match Flutter's Photon implementation |
-| ❌ | No Business Hours | Medium | Can't set operating hours |
-| ❌ | No Holiday Calendar | Low | Can't mark days off |
-| ❌ | No Staff Management | Medium | Can't add employees |
-| ❌ | No Role Permissions | Medium | No admin vs staff roles |
-| ❌ | No API Keys Management | Low | For integrations |
+| ✅ | Shop Address Sync | Medium | `settings/page.tsx` - Photon geocoding integration (same as Flutter app) for accurate address autocomplete |
+| ✅ | No Business Hours | Medium | `settings/page.tsx` - Working Hours tab with day-by-day open/close times and closed toggle |
+| ✅ | No Holiday Calendar | Low | `settings/page.tsx` - Holidays tab with CRUD, recurring dates, SA public holidays quick-add buttons |
+| ✅ | No Staff Management | Medium | `settings/page.tsx` - Team tab with invite modal, email invitations, staff list with status |
+| ✅ | No Role Permissions | Medium | `settings/page.tsx` - Admin (full access) vs Staff (quotes/chats only) with role selector and visual cards |
+| ? | No API Keys Management | Low | For integrations |
 
 ### 8. MISSING PAGES
 
@@ -361,6 +361,11 @@
 | 2026-01-22 | Quick Replies | Shop Dashboard | `chats/page.tsx` - Quick replies bar with 6 common phrases for fast responses |
 | 2026-01-22 | Canned Responses | Shop Dashboard | `chats/page.tsx` - Message Templates modal with CRUD, 5 categories, localStorage persistence |
 | 2026-01-22 | Chat Assignment | Shop Dashboard | `chats/page.tsx` - Staff assignment modal with 4 team members, badge in chat header |
+| 2026-01-22 | Shop Address Sync | Shop Dashboard | `settings/page.tsx` - Photon geocoding (same as Flutter) for accurate address autocomplete |
+| 2026-01-22 | Staff Management | Shop Dashboard | `settings/page.tsx` - Team tab with invite modal, email invitations, staff list |
+| 2026-01-22 | Role Permissions | Shop Dashboard | `settings/page.tsx` - Admin vs Staff roles with visual cards and role selector |
+| 2026-01-22 | Business Hours | Shop Dashboard | `settings/page.tsx` - Working Hours tab already existed with full day-by-day UI |
+| 2026-01-22 | Holiday Calendar | Shop Dashboard | `settings/page.tsx` - Holidays tab with CRUD, recurring dates, SA public holidays |
 
 ---
 
@@ -382,4 +387,5 @@
 | 2026-01-22 | Completed all 4 Shop Dashboard Quotes Page items: Quote Templates (saved presets), Pricing History (search past quotes), Quote Analytics (win/loss dashboard), Competitor Insights (market pricing) |
 | 2026-01-22 | Completed all 4 Shop Dashboard Orders Page items: Shipping Label Print (PDF generator), Tracking Integration (tracking numbers), Driver Assignment (internal/external), Batch Status Update (bulk actions) |
 | 2026-01-22 | Completed all 4 Shop Dashboard Chat System items: Image Sending (Supabase upload), Quick Replies (6 phrases bar), Canned Responses (templates modal), Chat Assignment (staff selection) |
+| 2026-01-22 | Completed all 5 Shop Dashboard Settings items: Shop Address Sync (Photon), Staff Management (Team tab), Role Permissions (Admin/Staff), Business Hours (existing), Holiday Calendar (SA holidays) |
 

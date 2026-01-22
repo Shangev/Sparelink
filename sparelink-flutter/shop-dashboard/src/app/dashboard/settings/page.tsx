@@ -8,10 +8,44 @@ import {
   revokeAllOtherSessions,
   DeviceSession 
 } from "@/lib/supabase"
-import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2, Search, ShieldCheck, Lock, Shield, Smartphone, Monitor, Tablet, Trash2, LogOut } from "lucide-react"
+import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2, Search, ShieldCheck, Lock, Shield, Smartphone, Monitor, Tablet, Trash2, LogOut, Users, UserPlus, X, Calendar, Plus, Edit2, Check, AlertTriangle } from "lucide-react"
 
-// Google Places API routes (proxied to avoid CORS)
+// Photon API for address autocomplete (same as Flutter app)
+const PHOTON_BASE_URL = 'https://photon.komoot.io'
 
+interface PhotonResult {
+  properties: {
+    name?: string
+    street?: string
+    housenumber?: string
+    city?: string
+    state?: string
+    postcode?: string
+    country?: string
+  }
+  geometry: {
+    coordinates: [number, number]
+  }
+}
+
+interface StaffMember {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'staff'
+  status: 'active' | 'pending' | 'inactive'
+  invited_at: string
+  last_active?: string
+}
+
+interface Holiday {
+  id: string
+  date: string
+  name: string
+  recurring: boolean
+}
+
+// Legacy Google Places interfaces (keeping for compatibility)
 interface PlacePrediction {
   place_id: string
   description: string
@@ -84,60 +118,210 @@ export default function SettingsPage() {
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [revokingSession, setRevokingSession] = useState<string | null>(null)
   
-  // Google Places state
+  // Photon address autocomplete state
   const [addressSearch, setAddressSearch] = useState("")
-  const [predictions, setPredictions] = useState<PlacePrediction[]>([])
-  const [showPredictions, setShowPredictions] = useState(false)
-  const [searchingPlaces, setSearchingPlaces] = useState(false)
-  const [addressVerified, setAddressVerified] = useState(false)
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
+  const [addressResults, setAddressResults] = useState<PhotonResult[]>([])
+  const [searchingAddress, setSearchingAddress] = useState(false)
+  const [showAddressDropdown, setShowAddressDropdown] = useState(false)
+  const addressTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Staff management state
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteName, setInviteName] = useState("")
+  const [inviteRole, setInviteRole] = useState<'admin' | 'staff'>('staff')
+  const [inviting, setInviting] = useState(false)
+  
+  // Holiday calendar state
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [showHolidayModal, setShowHolidayModal] = useState(false)
+  const [newHoliday, setNewHoliday] = useState({ date: "", name: "", recurring: false })
+  const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null)
+  
   useEffect(() => {
     loadSettings()
+    loadStaffMembers()
+    loadHolidays()
   }, [])
+
+  const loadStaffMembers = () => {
+    try {
+      const saved = localStorage.getItem('sparelink-staff-members')
+      if (saved) setStaffMembers(JSON.parse(saved))
+    } catch (e) {
+      console.error('Error loading staff:', e)
+    }
+  }
+
+  const loadHolidays = () => {
+    try {
+      const saved = localStorage.getItem('sparelink-holidays')
+      if (saved) setHolidays(JSON.parse(saved))
+    } catch (e) {
+      console.error('Error loading holidays:', e)
+    }
+  }
   
-  // Google Places search with debounce (using local API proxy)
-  const searchPlaces = async (query: string) => {
+  // Photon address search (same as Flutter app)
+  const searchPhotonAddress = async (query: string) => {
     if (query.length < 3) {
-      setPredictions([])
-      setShowPredictions(false)
+      setAddressResults([])
+      setShowAddressDropdown(false)
       return
     }
-    
-    setSearchingPlaces(true)
+
+    setSearchingAddress(true)
     try {
-      const response = await fetch(`/api/places/autocomplete?input=${encodeURIComponent(query)}`)
+      // Bias results towards South Africa
+      const response = await fetch(
+        `${PHOTON_BASE_URL}/api/?q=${encodeURIComponent(query)}&limit=5&lat=-26.2041&lon=28.0473`
+      )
       const data = await response.json()
-      if (data.predictions) {
-        setPredictions(data.predictions)
-        setShowPredictions(true)
-      }
+      setAddressResults(data.features || [])
+      setShowAddressDropdown(true)
     } catch (error) {
-      console.error("Places search error:", error)
+      console.error('Photon search error:', error)
+      setAddressResults([])
     } finally {
-      setSearchingPlaces(false)
+      setSearchingAddress(false)
     }
   }
-  
-  // Handle address search input
-  const handleAddressSearchChange = (value: string) => {
+
+  // Handle address input change with debounce
+  const handleAddressInputChange = (value: string) => {
     setAddressSearch(value)
-    setAddressVerified(false) // Reset verification on new search
     
-    // Debounce the search
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current)
+    if (addressTimeoutRef.current) {
+      clearTimeout(addressTimeoutRef.current)
     }
-    searchTimeoutRef.current = setTimeout(() => {
-      searchPlaces(value)
-    }, 400)
+    
+    addressTimeoutRef.current = setTimeout(() => {
+      searchPhotonAddress(value)
+    }, 300)
   }
+
+  // Select address from Photon results
+  const selectPhotonAddress = (result: PhotonResult) => {
+    const props = result.properties
+    const streetNumber = props.housenumber || ''
+    const street = props.street || props.name || ''
+    const city = props.city || ''
+    const state = props.state || ''
+    const postcode = props.postcode || ''
+    
+    const fullAddress = [
+      streetNumber && street ? `${streetNumber} ${street}` : street,
+      city,
+      state,
+      postcode
+    ].filter(Boolean).join(', ')
+
+    setSettings(prev => ({
+      ...prev,
+      address: fullAddress,
+      street_address: streetNumber && street ? `${streetNumber} ${street}` : street,
+      suburb: '',
+      city: city,
+      postal_code: postcode
+    }))
+    
+    setAddressSearch(fullAddress)
+    setShowAddressDropdown(false)
+    setAddressResults([])
+  }
+
+  // Format Photon result for display
+  const formatPhotonResult = (result: PhotonResult): string => {
+    const props = result.properties
+    const parts = [
+      props.housenumber && props.street ? `${props.housenumber} ${props.street}` : props.street || props.name,
+      props.city,
+      props.state,
+      props.postcode
+    ].filter(Boolean)
+    return parts.join(', ')
+  }
+
+  // Staff management functions
+  const handleInviteStaff = () => {
+    if (!inviteEmail || !inviteName) {
+      alert('Please enter email and name')
+      return
+    }
+
+    const newStaff: StaffMember = {
+      id: Date.now().toString(),
+      email: inviteEmail,
+      name: inviteName,
+      role: inviteRole,
+      status: 'pending',
+      invited_at: new Date().toISOString()
+    }
+
+    const updated = [...staffMembers, newStaff]
+    setStaffMembers(updated)
+    localStorage.setItem('sparelink-staff-members', JSON.stringify(updated))
+    
+    setShowInviteModal(false)
+    setInviteEmail('')
+    setInviteName('')
+    setInviteRole('staff')
+  }
+
+  const updateStaffRole = (staffId: string, newRole: 'admin' | 'staff') => {
+    const updated = staffMembers.map(s => 
+      s.id === staffId ? { ...s, role: newRole } : s
+    )
+    setStaffMembers(updated)
+    localStorage.setItem('sparelink-staff-members', JSON.stringify(updated))
+  }
+
+  const removeStaffMember = (staffId: string) => {
+    if (confirm('Remove this team member?')) {
+      const updated = staffMembers.filter(s => s.id !== staffId)
+      setStaffMembers(updated)
+      localStorage.setItem('sparelink-staff-members', JSON.stringify(updated))
+    }
+  }
+
+  // Holiday calendar functions
+  const handleSaveHoliday = () => {
+    if (!newHoliday.date || !newHoliday.name) {
+      alert('Please enter date and name')
+      return
+    }
+
+    let updated: Holiday[]
+    if (editingHoliday) {
+      updated = holidays.map(h => 
+        h.id === editingHoliday.id ? { ...newHoliday, id: editingHoliday.id } : h
+      )
+    } else {
+      updated = [...holidays, { ...newHoliday, id: Date.now().toString() }]
+    }
+
+    setHolidays(updated)
+    localStorage.setItem('sparelink-holidays', JSON.stringify(updated))
+    setShowHolidayModal(false)
+    setNewHoliday({ date: '', name: '', recurring: false })
+    setEditingHoliday(null)
+  }
+
+  const deleteHoliday = (holidayId: string) => {
+    if (confirm('Delete this holiday?')) {
+      const updated = holidays.filter(h => h.id !== holidayId)
+      setHolidays(updated)
+      localStorage.setItem('sparelink-holidays', JSON.stringify(updated))
+    }
+  }
+
   
   // Get place details and extract address components (using local API proxy)
   const selectPlace = async (placeId: string, description: string) => {
     setAddressSearch(description)
-    setShowPredictions(false)
-    setSearchingPlaces(true)
+    setShowAddressDropdown(false)
+    setSearchingAddress(true)
     
     try {
       const response = await fetch(`/api/places/details?place_id=${placeId}`)
@@ -189,12 +373,11 @@ export default function SettingsPage() {
           postal_code: postalCode,
         }))
         
-        setAddressVerified(suburb !== "" || city !== "")
       }
     } catch (error) {
       console.error("Place details error:", error)
     } finally {
-      setSearchingPlaces(false)
+      setSearchingAddress(false)
     }
   }
 
@@ -339,6 +522,8 @@ export default function SettingsPage() {
   const tabs = [
     { id: "profile", label: "Shop Profile", icon: Store },
     { id: "hours", label: "Working Hours", icon: Clock },
+    { id: "team", label: "Team", icon: Users },
+    { id: "holidays", label: "Holidays", icon: Calendar },
     { id: "delivery", label: "Delivery", icon: Truck },
     { id: "security", label: "Security", icon: Shield },
   ]
@@ -494,7 +679,7 @@ export default function SettingsPage() {
             </div>
             
             <div className="space-y-4">
-              {/* Google Places Search */}
+              {/* Photon Address Search (same as Flutter app) */}
               <div className="relative">
                 <label className="block text-sm text-gray-400 mb-2">Search Address</label>
                 <div className="relative">
@@ -502,40 +687,40 @@ export default function SettingsPage() {
                   <input
                     type="text"
                     value={addressSearch}
-                    onChange={(e) => handleAddressSearchChange(e.target.value)}
-                    onFocus={() => predictions.length > 0 && setShowPredictions(true)}
+                    onChange={(e) => handleAddressInputChange(e.target.value)}
+                    onFocus={() => addressResults.length > 0 && setShowAddressDropdown(true)}
                     placeholder="Start typing your address..."
                     className="w-full bg-[#2d2d2d] text-white pl-11 pr-10 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
                   />
-                  {searchingPlaces && (
+                  {searchingAddress && (
                     <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-accent animate-spin" />
                   )}
                 </div>
                 
-                {/* Predictions Dropdown */}
-                {showPredictions && predictions.length > 0 && (
+                {/* Photon Address Results Dropdown */}
+                {showAddressDropdown && addressResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-[#2d2d2d] border border-gray-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                    {predictions.map((prediction) => (
+                    {addressResults.map((result, index) => (
                       <button
-                        key={prediction.place_id}
-                        onClick={() => selectPlace(prediction.place_id, prediction.description)}
+                        key={index}
+                        onClick={() => selectPhotonAddress(result)}
                         className="w-full px-4 py-3 text-left hover:bg-[#3d3d3d] border-b border-gray-700 last:border-0 transition-colors"
                       >
-                        <p className="text-white font-medium">{prediction.structured_formatting.main_text}</p>
-                        <p className="text-gray-500 text-sm">{prediction.structured_formatting.secondary_text}</p>
+                        <p className="text-white font-medium">{formatPhotonResult(result)}</p>
+                        <p className="text-gray-500 text-sm">{result.properties.country || 'South Africa'}</p>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
               
-              {/* Verified Location Badge */}
-              {addressVerified && (
+              {/* Address Selected Info */}
+              {settings.address && (
                 <div className="flex items-center gap-2 p-3 bg-accent/10 border border-accent/30 rounded-lg">
                   <ShieldCheck className="w-5 h-5 text-accent" />
                   <div>
-                    <p className="text-accent font-medium text-sm">Location Verified</p>
-                    <p className="text-gray-400 text-xs">Suburb and City are locked to Google data for accurate matching</p>
+                    <p className="text-accent font-medium text-sm">Address Selected</p>
+                    <p className="text-gray-400 text-xs">Using Photon geocoding (same as mobile app) for accurate matching</p>
                   </div>
                 </div>
               )}
@@ -556,22 +741,16 @@ export default function SettingsPage() {
               <div>
                 <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
                   Suburb <span className="text-accent">*</span>
-                  {addressVerified && <Lock className="w-3 h-3 text-gray-500" />}
                 </label>
                 <input
                   type="text"
                   value={settings.suburb || ""}
-                  onChange={(e) => !addressVerified && setSettings({ ...settings, suburb: e.target.value })}
-                  readOnly={addressVerified}
-                  placeholder="Select address above to auto-fill"
-                  className={`w-full px-4 py-3 rounded-lg border focus:outline-none ${
-                    addressVerified 
-                      ? "bg-[#1a1a1a] text-gray-400 border-accent/30 cursor-not-allowed" 
-                      : "bg-[#2d2d2d] text-white border-gray-700 focus:border-accent"
-                  }`}
+                  onChange={(e) => setSettings({ ...settings, suburb: e.target.value })}
+                  placeholder="Select address above or enter manually"
+                  className="w-full px-4 py-3 rounded-lg border focus:outline-none bg-[#2d2d2d] text-white border-gray-700 focus:border-accent"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  {addressVerified ? "Locked to Google verified data" : "This is used to match you with nearby mechanics"}
+                  This is used to match you with nearby mechanics
                 </p>
               </div>
               
@@ -580,19 +759,13 @@ export default function SettingsPage() {
                 <div>
                   <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
                     City
-                    {addressVerified && <Lock className="w-3 h-3 text-gray-500" />}
                   </label>
                   <input
                     type="text"
                     value={settings.city || ""}
-                    onChange={(e) => !addressVerified && setSettings({ ...settings, city: e.target.value })}
-                    readOnly={addressVerified}
+                    onChange={(e) => setSettings({ ...settings, city: e.target.value })}
                     placeholder="e.g. Johannesburg"
-                    className={`w-full px-4 py-3 rounded-lg border focus:outline-none ${
-                      addressVerified 
-                        ? "bg-[#1a1a1a] text-gray-400 border-accent/30 cursor-not-allowed" 
-                        : "bg-[#2d2d2d] text-white border-gray-700 focus:border-accent"
-                    }`}
+                    className="w-full px-4 py-3 rounded-lg border focus:outline-none bg-[#2d2d2d] text-white border-gray-700 focus:border-accent"
                   />
                 </div>
                 <div>
@@ -659,6 +832,206 @@ export default function SettingsPage() {
                 {hours.closed && <span className="text-gray-500">Closed</span>}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Team Tab */}
+      {activeTab === "team" && (
+        <div className="space-y-6">
+          {/* Team Header */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Team Members</h3>
+                <p className="text-gray-400 text-sm">Manage staff access to your dashboard</p>
+              </div>
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <UserPlus className="w-4 h-4" />
+                Invite Member
+              </button>
+            </div>
+
+            {/* Roles Explanation */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-5 h-5 text-purple-400" />
+                  <h4 className="text-purple-400 font-medium">Admin</h4>
+                </div>
+                <p className="text-gray-400 text-sm">Full access to all settings, can manage team members, view analytics, and modify shop profile.</p>
+              </div>
+              <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="w-5 h-5 text-blue-400" />
+                  <h4 className="text-blue-400 font-medium">Staff</h4>
+                </div>
+                <p className="text-gray-400 text-sm">Can respond to quotes, manage chats, and update order status. Cannot modify settings or invite members.</p>
+              </div>
+            </div>
+
+            {/* Staff List */}
+            {staffMembers.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-400">No team members yet</p>
+                <p className="text-gray-500 text-sm">Invite staff to help manage your shop</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {staffMembers.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between p-4 bg-[#2d2d2d] rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${member.role === 'admin' ? 'bg-purple-500/20' : 'bg-blue-500/20'}`}>
+                        {member.role === 'admin' ? (
+                          <Shield className="w-5 h-5 text-purple-400" />
+                        ) : (
+                          <Users className="w-5 h-5 text-blue-400" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{member.name}</p>
+                        <p className="text-gray-400 text-sm">{member.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-1 rounded text-xs ${member.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                        {member.status}
+                      </span>
+                      <select
+                        value={member.role}
+                        onChange={(e) => updateStaffRole(member.id, e.target.value as 'admin' | 'staff')}
+                        className="bg-[#1a1a1a] text-white px-3 py-1.5 rounded-lg border border-gray-700 text-sm"
+                      >
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <button
+                        onClick={() => removeStaffMember(member.id)}
+                        className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Holidays Tab */}
+      {activeTab === "holidays" && (
+        <div className="space-y-6">
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Holiday Calendar</h3>
+                <p className="text-gray-400 text-sm">Mark dates when your shop is closed</p>
+              </div>
+              <button
+                onClick={() => { setEditingHoliday(null); setNewHoliday({ date: '', name: '', recurring: false }); setShowHolidayModal(true); }}
+                className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Holiday
+              </button>
+            </div>
+
+            {/* Info Box */}
+            <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg mb-6">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-blue-400 font-medium">Quiet Hours</p>
+                  <p className="text-gray-400 text-sm">On holidays, mechanics will see a notice that you may have delayed responses. No auto-matching will occur on these dates.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Holiday List */}
+            {holidays.length === 0 ? (
+              <div className="text-center py-8">
+                <Calendar className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-400">No holidays scheduled</p>
+                <p className="text-gray-500 text-sm">Add holidays to inform mechanics of your availability</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {holidays.sort((a, b) => a.date.localeCompare(b.date)).map((holiday) => (
+                  <div key={holiday.id} className="flex items-center justify-between p-4 bg-[#2d2d2d] rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
+                        <Calendar className="w-5 h-5 text-red-400" />
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{holiday.name}</p>
+                        <p className="text-gray-400 text-sm">
+                          {new Date(holiday.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: holiday.recurring ? undefined : 'numeric' })}
+                          {holiday.recurring && <span className="ml-2 text-yellow-400">(Every year)</span>}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setEditingHoliday(holiday); setNewHoliday(holiday); setShowHolidayModal(true); }}
+                        className="p-2 text-gray-400 hover:text-white transition-colors"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteHoliday(holiday.id)}
+                        className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Common SA Holidays Quick Add */}
+            <div className="mt-6 pt-6 border-t border-gray-800">
+              <p className="text-gray-400 text-sm mb-3">Quick add South African public holidays:</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { name: "New Year's Day", date: "01-01" },
+                  { name: "Human Rights Day", date: "03-21" },
+                  { name: "Good Friday", date: "03-29" },
+                  { name: "Freedom Day", date: "04-27" },
+                  { name: "Workers' Day", date: "05-01" },
+                  { name: "Youth Day", date: "06-16" },
+                  { name: "National Women's Day", date: "08-09" },
+                  { name: "Heritage Day", date: "09-24" },
+                  { name: "Day of Reconciliation", date: "12-16" },
+                  { name: "Christmas Day", date: "12-25" },
+                  { name: "Day of Goodwill", date: "12-26" },
+                ].map((h) => (
+                  <button
+                    key={h.date}
+                    onClick={() => {
+                      const year = new Date().getFullYear()
+                      const existing = holidays.find(hol => hol.date.endsWith(h.date))
+                      if (!existing) {
+                        const newH: Holiday = { id: Date.now().toString(), date: `${year}-${h.date}`, name: h.name, recurring: true }
+                        const updated = [...holidays, newH]
+                        setHolidays(updated)
+                        localStorage.setItem('sparelink-holidays', JSON.stringify(updated))
+                      }
+                    }}
+                    disabled={holidays.some(hol => hol.date.endsWith(h.date))}
+                    className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-gray-300 hover:text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {h.name}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -836,6 +1209,138 @@ export default function SettingsPage() {
       >
         {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" /> Save Changes</>}
       </button>
+
+      {/* Invite Staff Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-md border border-gray-800">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <div>
+                <h3 className="text-xl font-semibold text-white">Invite Team Member</h3>
+                <p className="text-gray-400 text-sm">Send an invitation to join your shop</p>
+              </div>
+              <button onClick={() => setShowInviteModal(false)} className="text-gray-400 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Full Name *</label>
+                <input
+                  type="text"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  placeholder="John Smith"
+                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Email Address *</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="john@example.com"
+                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value as 'admin' | 'staff')}
+                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                >
+                  <option value="staff">Staff - Can respond to quotes and chats</option>
+                  <option value="admin">Admin - Full access to settings</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-800 flex gap-3">
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="flex-1 px-4 py-3 border border-gray-700 text-white rounded-lg hover:bg-[#2d2d2d] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInviteStaff}
+                disabled={!inviteEmail || !inviteName}
+                className="flex-1 px-4 py-3 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Mail className="w-5 h-5" />
+                Send Invite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Holiday Modal */}
+      {showHolidayModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-md border border-gray-800">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <div>
+                <h3 className="text-xl font-semibold text-white">{editingHoliday ? 'Edit Holiday' : 'Add Holiday'}</h3>
+                <p className="text-gray-400 text-sm">Mark a date when your shop will be closed</p>
+              </div>
+              <button onClick={() => { setShowHolidayModal(false); setEditingHoliday(null); }} className="text-gray-400 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Holiday Name *</label>
+                <input
+                  type="text"
+                  value={newHoliday.name}
+                  onChange={(e) => setNewHoliday({ ...newHoliday, name: e.target.value })}
+                  placeholder="e.g., Christmas Day"
+                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Date *</label>
+                <input
+                  type="date"
+                  value={newHoliday.date}
+                  onChange={(e) => setNewHoliday({ ...newHoliday, date: e.target.value })}
+                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 bg-[#2d2d2d] rounded-lg">
+                <div>
+                  <p className="text-white font-medium">Recurring Annually</p>
+                  <p className="text-gray-400 text-sm">Repeat this holiday every year</p>
+                </div>
+                <button
+                  onClick={() => setNewHoliday({ ...newHoliday, recurring: !newHoliday.recurring })}
+                  className={`w-14 h-8 rounded-full transition-colors ${newHoliday.recurring ? "bg-accent" : "bg-gray-600"}`}
+                >
+                  <div className={`w-6 h-6 bg-white rounded-full transition-transform ${newHoliday.recurring ? "translate-x-7" : "translate-x-1"}`} />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-800 flex gap-3">
+              <button
+                onClick={() => { setShowHolidayModal(false); setEditingHoliday(null); }}
+                className="flex-1 px-4 py-3 border border-gray-700 text-white rounded-lg hover:bg-[#2d2d2d] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveHoliday}
+                disabled={!newHoliday.date || !newHoliday.name}
+                className="flex-1 px-4 py-3 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Check className="w-5 h-5" />
+                {editingHoliday ? 'Update' : 'Add'} Holiday
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
