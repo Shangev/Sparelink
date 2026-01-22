@@ -170,11 +170,11 @@
 
 | Status | Issue | Priority | Description |
 |--------|-------|----------|-------------|
-| ❌ | No Advanced Filtering | Medium | Can't filter by date, vehicle, part type |
-| ❌ | No Bulk Quote Sending | Medium | Must quote one at a time |
-| ❌ | No Request Priority | Low | Can't mark as high priority |
-| ❌ | No Auto-Archive | Low | Old requests clutter the list |
-| ❌ | No Export to CSV | Low | Can't export request data |
+| ✅ | No Advanced Filtering | Medium | `requests/page.tsx` - Filter by Date Range (Today/Week/Month), Vehicle Make, Part Type with collapsible panel |
+| ✅ | No Bulk Quote Sending | Medium | `requests/page.tsx` - Select multiple requests with checkboxes, send unified quote with bulk modal |
+| ✅ | No Request Priority | Low | `requests/page.tsx` - Star/flag system for priority requests, sorted to top, persisted in localStorage |
+| ✅ | No Auto-Archive | Low | `requests/page.tsx` - Requests older than 30 days auto-archived, manual archive/unarchive, separate view |
+| ✅ | No Export to CSV | Low | `requests/page.tsx` - Export selected or all requests to CSV with full details |
 
 ### 4. QUOTES PAGE
 
@@ -344,6 +344,11 @@
 | 2026-01-22 | Today's Summary | Shop Dashboard | `dashboard/page.tsx` - 4 stat cards with real-time updates: Requests, Quotes, Accepted, Orders |
 | 2026-01-22 | Alerts/Warnings | Shop Dashboard | `dashboard/page.tsx` - Expiring quotes alerts, low response warnings, urgent action notifications |
 | 2026-01-22 | Quick Actions | Shop Dashboard | `dashboard/page.tsx` - Navigation shortcuts: Browse Requests, Manage Orders, Update Hours, Send Quote |
+| 2026-01-22 | Advanced Filtering | Shop Dashboard | `requests/page.tsx` - Filter by Date Range (Today/Week/Month), Vehicle Make, Part Type with collapsible panel |
+| 2026-01-22 | Bulk Quote Sending | Shop Dashboard | `requests/page.tsx` - Select multiple requests, send unified quote via bulk modal with summary |
+| 2026-01-22 | Request Priority | Shop Dashboard | `requests/page.tsx` - Star/flag system, priority requests sorted to top, persisted in localStorage |
+| 2026-01-22 | Auto-Archive | Shop Dashboard | `requests/page.tsx` - Requests older than 30 days auto-archived, manual archive/unarchive, separate view |
+| 2026-01-22 | Export to CSV | Shop Dashboard | `requests/page.tsx` - Export selected or all requests to CSV with ID, Vehicle, Part, Status, Date |
 
 ---
 
@@ -361,4 +366,5 @@
 | 2026-01-22 | Completed all 4 Notification items: Push Notifications (Firebase FCM with background support), Notification Preferences (per-type toggles), Sound Customization (7 sound options), Quiet Hours (Do Not Disturb with time pickers) |
 | 2026-01-22 | Completed all 3 Shop Dashboard Authentication items: Secure SSO (database tokens, no URL passing), Session Persistence (localStorage + auto-refresh), Multi-device Management (Security tab with revoke) |
 | 2026-01-22 | Completed all 4 Shop Dashboard Home items: Analytics Dashboard (performance metrics), Today's Summary (4 stat cards), Alerts/Warnings (expiring quotes, response warnings), Quick Actions (navigation shortcuts) |
+| 2026-01-22 | Completed all 5 Shop Dashboard Requests Page items: Advanced Filtering (date/vehicle/part), Bulk Quote Sending, Request Priority/Star system, Auto-Archive (30 days), Export to CSV |
 
