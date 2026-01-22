@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { 
+  supabase, 
+  getCurrentSession, 
+  onAuthStateChange, 
+  updateSessionActivity,
+  cleanupSession 
+} from "@/lib/supabase"
 import { 
   LayoutDashboard, 
   FileText, 
@@ -34,15 +40,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     checkAuth()
+    
+    // Set up auth state listener for session persistence
+    const { data: { subscription } } = onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        router.push("/login")
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('Session token refreshed automatically')
+      }
+    })
+    
+    // Update session activity periodically (every 5 minutes)
+    const activityInterval = setInterval(() => {
+      updateSessionActivity()
+    }, 5 * 60 * 1000)
+    
+    return () => {
+      subscription.unsubscribe()
+      clearInterval(activityInterval)
+    }
   }, [])
 
   const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    // First try to get existing session from storage
+    const { session } = await getCurrentSession()
     
-    if (!user) {
+    if (!session) {
       router.push("/login")
       return
     }
+    
+    const user = session.user
 
     const { data: shopData } = await supabase
       .from("shops")
@@ -54,10 +82,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setShop(shopData)
     }
     
+    // Update session activity on page load
+    updateSessionActivity()
+    
     setLoading(false)
   }
 
   const handleLogout = async () => {
+    // Clean up device session before signing out
+    await cleanupSession()
     await supabase.auth.signOut()
     router.push("/login")
   }

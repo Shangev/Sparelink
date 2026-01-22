@@ -1,8 +1,14 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { supabase } from "@/lib/supabase"
-import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2, Search, ShieldCheck, Lock } from "lucide-react"
+import { 
+  supabase, 
+  getDeviceSessions, 
+  revokeDeviceSession, 
+  revokeAllOtherSessions,
+  DeviceSession 
+} from "@/lib/supabase"
+import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2, Search, ShieldCheck, Lock, Shield, Smartphone, Monitor, Tablet, Trash2, LogOut } from "lucide-react"
 
 // Google Places API routes (proxied to avoid CORS)
 
@@ -72,6 +78,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState("profile")
+  
+  // Device sessions state (multi-device management)
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([])
+  const [loadingSessions, setLoadingSessions] = useState(false)
+  const [revokingSession, setRevokingSession] = useState<string | null>(null)
   
   // Google Places state
   const [addressSearch, setAddressSearch] = useState("")
@@ -329,7 +340,86 @@ export default function SettingsPage() {
     { id: "profile", label: "Shop Profile", icon: Store },
     { id: "hours", label: "Working Hours", icon: Clock },
     { id: "delivery", label: "Delivery", icon: Truck },
+    { id: "security", label: "Security", icon: Shield },
   ]
+  
+  // Load device sessions when security tab is active
+  useEffect(() => {
+    if (activeTab === "security") {
+      loadDeviceSessions()
+    }
+  }, [activeTab])
+  
+  const loadDeviceSessions = async () => {
+    setLoadingSessions(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const sessions = await getDeviceSessions(user.id)
+        setDeviceSessions(sessions)
+      }
+    } catch (error) {
+      console.error("Error loading sessions:", error)
+    } finally {
+      setLoadingSessions(false)
+    }
+  }
+  
+  const handleRevokeSession = async (sessionId: string) => {
+    setRevokingSession(sessionId)
+    try {
+      const success = await revokeDeviceSession(sessionId)
+      if (success) {
+        setDeviceSessions(prev => prev.filter(s => s.id !== sessionId))
+      }
+    } catch (error) {
+      console.error("Error revoking session:", error)
+    } finally {
+      setRevokingSession(null)
+    }
+  }
+  
+  const handleRevokeAllOther = async () => {
+    if (!confirm("Are you sure you want to sign out all other devices?")) return
+    
+    setLoadingSessions(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const success = await revokeAllOtherSessions(user.id)
+        if (success) {
+          setDeviceSessions(prev => prev.filter(s => s.is_current))
+        }
+      }
+    } catch (error) {
+      console.error("Error revoking sessions:", error)
+    } finally {
+      setLoadingSessions(false)
+    }
+  }
+  
+  const getDeviceIcon = (deviceType: string) => {
+    switch (deviceType) {
+      case 'mobile': return Smartphone
+      case 'tablet': return Tablet
+      default: return Monitor
+    }
+  }
+  
+  const formatLastActive = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+    
+    if (diffMins < 1) return "Just now"
+    if (diffMins < 60) return `${diffMins} min ago`
+    if (diffHours < 24) return `${diffHours} hours ago`
+    if (diffDays < 7) return `${diffDays} days ago`
+    return date.toLocaleDateString()
+  }
 
   if (loading) {
     return (
@@ -611,6 +701,130 @@ export default function SettingsPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Security Tab */}
+      {activeTab === "security" && (
+        <div className="space-y-6">
+          {/* Active Sessions Section */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-white font-medium text-lg flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-accent" />
+                  Active Sessions
+                </h3>
+                <p className="text-gray-400 text-sm mt-1">
+                  Manage devices where you're currently signed in
+                </p>
+              </div>
+              {deviceSessions.length > 1 && (
+                <button
+                  onClick={handleRevokeAllOther}
+                  disabled={loadingSessions}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors text-sm font-medium"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign out all other devices
+                </button>
+              )}
+            </div>
+
+            {loadingSessions ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-accent animate-spin" />
+              </div>
+            ) : deviceSessions.length === 0 ? (
+              <div className="text-center py-12">
+                <Monitor className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-400">No active sessions found</p>
+                <p className="text-gray-500 text-sm mt-1">Session tracking will begin on your next login</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {deviceSessions.map((session) => {
+                  const DeviceIcon = getDeviceIcon(session.device_type)
+                  return (
+                    <div
+                      key={session.id}
+                      className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
+                        session.is_current
+                          ? "bg-accent/10 border-accent/30"
+                          : "bg-[#2d2d2d] border-gray-700 hover:border-gray-600"
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-lg ${session.is_current ? "bg-accent/20" : "bg-[#1a1a1a]"}`}>
+                          <DeviceIcon className={`w-6 h-6 ${session.is_current ? "text-accent" : "text-gray-400"}`} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-white font-medium">{session.device_name}</p>
+                            {session.is_current && (
+                              <span className="text-xs bg-accent text-white px-2 py-0.5 rounded-full">
+                                This device
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-gray-400 text-sm">{session.browser}</span>
+                            <span className="text-gray-600">•</span>
+                            <span className="text-gray-400 text-sm">{session.os}</span>
+                            <span className="text-gray-600">•</span>
+                            <span className="text-gray-500 text-sm">
+                              {session.is_current ? "Active now" : formatLastActive(session.last_active)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {!session.is_current && (
+                        <button
+                          onClick={() => handleRevokeSession(session.id)}
+                          disabled={revokingSession === session.id}
+                          className="flex items-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors text-sm"
+                        >
+                          {revokingSession === session.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Security Tips */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6">
+            <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-accent" />
+              Security Tips
+            </h3>
+            <ul className="space-y-3">
+              <li className="flex items-start gap-3 text-gray-400 text-sm">
+                <span className="text-accent mt-0.5">•</span>
+                <span>Sign out from devices you don't recognize immediately</span>
+              </li>
+              <li className="flex items-start gap-3 text-gray-400 text-sm">
+                <span className="text-accent mt-0.5">•</span>
+                <span>Don't share your OTP code with anyone</span>
+              </li>
+              <li className="flex items-start gap-3 text-gray-400 text-sm">
+                <span className="text-accent mt-0.5">•</span>
+                <span>Use a unique phone number for your shop account</span>
+              </li>
+              <li className="flex items-start gap-3 text-gray-400 text-sm">
+                <span className="text-accent mt-0.5">•</span>
+                <span>Regularly review active sessions and revoke old ones</span>
+              </li>
+            </ul>
+          </div>
         </div>
       )}
 

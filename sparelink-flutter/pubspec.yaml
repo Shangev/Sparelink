@@ -59,10 +59,10 @@ dependencies:
   audioplayers: ^5.2.1
   path_provider: ^2.1.1
 
-  # Push Notifications (commented out until Firebase project is configured)
-  # Uncomment and run 'flutterfire configure' after setting up Firebase project
-  # firebase_core: ^3.8.1
-  # firebase_messaging: ^15.1.6
+  # Push Notifications - Firebase Cloud Messaging
+  # NOTE: Run 'flutterfire configure' after setting up your Firebase project
+  firebase_core: ^3.8.1
+  firebase_messaging: ^15.1.6
 
 dev_dependencies:
   flutter_test:

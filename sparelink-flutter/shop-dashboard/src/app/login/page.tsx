@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { supabase, registerDeviceSession, getCurrentSession } from "@/lib/supabase"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,6 +11,34 @@ export default function LoginPage() {
   const [step, setStep] = useState<"phone" | "otp">("phone")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  // Check for existing session on mount (session persistence)
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      try {
+        const { session } = await getCurrentSession()
+        if (session) {
+          // Verify user is a shop owner
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user.id)
+            .single()
+          
+          if (profile?.role === "shop") {
+            router.push("/dashboard")
+            return
+          }
+        }
+      } catch (err) {
+        console.error("Session check error:", err)
+      } finally {
+        setCheckingSession(false)
+      }
+    }
+    checkExistingSession()
+  }, [])
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -59,6 +87,9 @@ export default function LoginPage() {
           await supabase.auth.signOut()
           return
         }
+        
+        // Register this device session for multi-device management
+        await registerDeviceSession(data.user.id)
         
         router.push("/dashboard")
       }

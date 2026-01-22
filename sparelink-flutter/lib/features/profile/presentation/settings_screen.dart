@@ -41,133 +41,242 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       children: [
         // Left column: Notifications & Appearance
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle('NOTIFICATIONS'),
-              const SizedBox(height: 12),
-              _buildGlassCard(
-                child: Column(
-                  children: [
-                    _buildSwitchRow(
-                      icon: LucideIcons.bell,
-                      label: 'Push Notifications',
-                      subtitle: 'Receive push notifications',
-                      value: settings.notificationsEnabled,
-                      onChanged: (value) => settings.setNotificationsEnabled(value),
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
-                    _buildSwitchRow(
-                      icon: LucideIcons.volume2,
-                      label: 'Sound',
-                      subtitle: 'Play sound for notifications',
-                      value: settings.soundEnabled,
-                      onChanged: (value) => settings.setSoundEnabled(value),
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
-                    _buildSwitchRow(
-                      icon: LucideIcons.smartphone,
-                      label: 'Vibration',
-                      subtitle: 'Vibrate for notifications',
-                      value: settings.vibrationEnabled,
-                      onChanged: (value) => settings.setVibrationEnabled(value),
-                    ),
-                  ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle('NOTIFICATIONS'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSwitchRow(
+                        icon: LucideIcons.bell,
+                        label: 'Push Notifications',
+                        subtitle: 'Receive push notifications',
+                        value: settings.notificationsEnabled,
+                        onChanged: (value) => settings.setNotificationsEnabled(value),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildSwitchRow(
+                        icon: LucideIcons.volume2,
+                        label: 'Sound',
+                        subtitle: 'Play sound for notifications',
+                        value: settings.soundEnabled,
+                        onChanged: (value) => settings.setSoundEnabled(value),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildSwitchRow(
+                        icon: LucideIcons.smartphone,
+                        label: 'Vibration',
+                        subtitle: 'Vibrate for notifications',
+                        value: settings.vibrationEnabled,
+                        onChanged: (value) => settings.setVibrationEnabled(value),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 30),
-              _buildSectionTitle('APPEARANCE'),
-              const SizedBox(height: 12),
-              _buildGlassCard(
-                child: Column(
-                  children: [
-                    _buildSwitchRow(
-                      icon: LucideIcons.moon,
-                      label: 'Dark Mode',
-                      subtitle: 'Use dark theme',
-                      value: settings.darkMode,
-                      onChanged: (value) {
-                        settings.setDarkMode(value);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(value ? 'Dark mode enabled' : 'Light mode coming soon!'),
-                            backgroundColor: AppTheme.accentGreen,
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
-                    _buildMenuRow(
-                      icon: LucideIcons.languages,
-                      label: 'Language',
-                      subtitle: _getLanguageName(settings.language),
-                      onTap: () => _showLanguageSelector(settings),
-                    ),
-                  ],
+                const SizedBox(height: 30),
+                _buildSectionTitle('NOTIFICATION PREFERENCES'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSwitchRow(
+                        icon: LucideIcons.tag,
+                        label: 'New Quotes',
+                        subtitle: 'Get notified when shops send quotes',
+                        value: settings.newQuotesNotifications,
+                        onChanged: (value) => settings.setNewQuotesNotifications(value),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildSwitchRow(
+                        icon: LucideIcons.truck,
+                        label: 'Order Updates',
+                        subtitle: 'Shipping and delivery notifications',
+                        value: settings.orderUpdatesNotifications,
+                        onChanged: (value) => settings.setOrderUpdatesNotifications(value),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildSwitchRow(
+                        icon: LucideIcons.messageSquare,
+                        label: 'Chat Messages',
+                        subtitle: 'New messages from shops',
+                        value: settings.chatMessagesNotifications,
+                        onChanged: (value) => settings.setChatMessagesNotifications(value),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 30),
+                _buildSectionTitle('SOUND CUSTOMIZATION'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildMenuRow(
+                        icon: LucideIcons.music,
+                        label: 'Quote Alerts',
+                        subtitle: settings.quotesSound.displayName,
+                        onTap: () => _showSoundSelector(settings, 'quotes'),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildMenuRow(
+                        icon: LucideIcons.music,
+                        label: 'Order Alerts',
+                        subtitle: settings.ordersSound.displayName,
+                        onTap: () => _showSoundSelector(settings, 'orders'),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildMenuRow(
+                        icon: LucideIcons.music,
+                        label: 'Chat Alerts',
+                        subtitle: settings.chatSound.displayName,
+                        onTap: () => _showSoundSelector(settings, 'chat'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 30),
+                _buildSectionTitle('APPEARANCE'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSwitchRow(
+                        icon: LucideIcons.moon,
+                        label: 'Dark Mode',
+                        subtitle: 'Use dark theme',
+                        value: settings.darkMode,
+                        onChanged: (value) {
+                          settings.setDarkMode(value);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(value ? 'Dark mode enabled' : 'Light mode coming soon!'),
+                              backgroundColor: AppTheme.accentGreen,
+                            ),
+                          );
+                        },
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildMenuRow(
+                        icon: LucideIcons.languages,
+                        label: 'Language',
+                        subtitle: _getLanguageName(settings.language),
+                        onTap: () => _showLanguageSelector(settings),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
         const SizedBox(width: 24),
-        // Right column: Privacy & Data
+        // Right column: Quiet Hours, Privacy & Data
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle('PRIVACY'),
-              const SizedBox(height: 12),
-              _buildGlassCard(
-                child: Column(
-                  children: [
-                    _buildSwitchRow(
-                      icon: LucideIcons.mapPin,
-                      label: 'Location Services',
-                      subtitle: 'Allow access to your location',
-                      value: settings.locationEnabled,
-                      onChanged: (value) => settings.setLocationEnabled(value),
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
-                    _buildMenuRow(
-                      icon: LucideIcons.shield,
-                      label: 'Privacy Policy',
-                      onTap: () => _showPrivacyPolicy(),
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
-                    _buildMenuRow(
-                      icon: LucideIcons.fileText,
-                      label: 'Terms of Service',
-                      onTap: () => _showTermsOfService(),
-                    ),
-                  ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle('QUIET HOURS'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSwitchRow(
+                        icon: LucideIcons.moonStar,
+                        label: 'Do Not Disturb',
+                        subtitle: settings.quietHoursEnabled 
+                            ? settings.quietHoursDescription 
+                            : 'Silence notifications during set hours',
+                        value: settings.quietHoursEnabled,
+                        onChanged: (value) => settings.setQuietHoursEnabled(value),
+                      ),
+                      if (settings.quietHoursEnabled) ...[
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildMenuRow(
+                          icon: LucideIcons.clock,
+                          label: 'Start Time',
+                          subtitle: _formatTimeOfDay(settings.quietHoursStart),
+                          onTap: () => _selectQuietHoursTime(settings, isStart: true),
+                        ),
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildMenuRow(
+                          icon: LucideIcons.clock,
+                          label: 'End Time',
+                          subtitle: _formatTimeOfDay(settings.quietHoursEnd),
+                          onTap: () => _selectQuietHoursTime(settings, isStart: false),
+                        ),
+                        const Divider(color: Colors.white12, height: 24),
+                        _buildSwitchRow(
+                          icon: LucideIcons.calendar,
+                          label: 'Include Weekends',
+                          subtitle: 'Apply quiet hours on Sat & Sun',
+                          value: settings.quietHoursWeekends,
+                          onChanged: (value) => settings.setQuietHoursWeekends(value),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 30),
-              _buildSectionTitle('DATA'),
-              const SizedBox(height: 12),
-              _buildGlassCard(
-                child: Column(
-                  children: [
-                    _buildMenuRow(
-                      icon: LucideIcons.download,
-                      label: 'Download My Data',
-                      subtitle: 'Export your personal data',
-                      onTap: () => _exportUserData(settings),
-                      isLoading: _isExporting,
-                    ),
-                    const Divider(color: Colors.white12, height: 24),
-                    _buildMenuRow(
-                      icon: LucideIcons.trash2,
-                      label: 'Delete Account',
-                      subtitle: 'Permanently delete your account',
-                      iconColor: Colors.red,
-                      labelColor: Colors.red,
-                      onTap: () => _showDeleteAccountDialog(settings),
-                    ),
-                  ],
+                const SizedBox(height: 30),
+                _buildSectionTitle('PRIVACY'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildSwitchRow(
+                        icon: LucideIcons.mapPin,
+                        label: 'Location Services',
+                        subtitle: 'Allow access to your location',
+                        value: settings.locationEnabled,
+                        onChanged: (value) => settings.setLocationEnabled(value),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildMenuRow(
+                        icon: LucideIcons.shield,
+                        label: 'Privacy Policy',
+                        onTap: () => _showPrivacyPolicy(),
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildMenuRow(
+                        icon: LucideIcons.fileText,
+                        label: 'Terms of Service',
+                        onTap: () => _showTermsOfService(),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 30),
+                _buildSectionTitle('DATA'),
+                const SizedBox(height: 12),
+                _buildGlassCard(
+                  child: Column(
+                    children: [
+                      _buildMenuRow(
+                        icon: LucideIcons.download,
+                        label: 'Download My Data',
+                        subtitle: 'Export your personal data',
+                        onTap: () => _exportUserData(settings),
+                        isLoading: _isExporting,
+                      ),
+                      const Divider(color: Colors.white12, height: 24),
+                      _buildMenuRow(
+                        icon: LucideIcons.trash2,
+                        label: 'Delete Account',
+                        subtitle: 'Permanently delete your account',
+                        iconColor: Colors.red,
+                        labelColor: Colors.red,
+                        onTap: () => _showDeleteAccountDialog(settings),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ],
@@ -207,6 +316,109 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 value: settings.vibrationEnabled,
                 onChanged: (value) => settings.setVibrationEnabled(value),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('NOTIFICATION PREFERENCES'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildSwitchRow(
+                icon: LucideIcons.tag,
+                label: 'New Quotes',
+                subtitle: 'Get notified when shops send quotes',
+                value: settings.newQuotesNotifications,
+                onChanged: (value) => settings.setNewQuotesNotifications(value),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildSwitchRow(
+                icon: LucideIcons.truck,
+                label: 'Order Updates',
+                subtitle: 'Shipping and delivery notifications',
+                value: settings.orderUpdatesNotifications,
+                onChanged: (value) => settings.setOrderUpdatesNotifications(value),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildSwitchRow(
+                icon: LucideIcons.messageSquare,
+                label: 'Chat Messages',
+                subtitle: 'New messages from shops',
+                value: settings.chatMessagesNotifications,
+                onChanged: (value) => settings.setChatMessagesNotifications(value),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('SOUND CUSTOMIZATION'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildMenuRow(
+                icon: LucideIcons.music,
+                label: 'Quote Alerts',
+                subtitle: settings.quotesSound.displayName,
+                onTap: () => _showSoundSelector(settings, 'quotes'),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildMenuRow(
+                icon: LucideIcons.music,
+                label: 'Order Alerts',
+                subtitle: settings.ordersSound.displayName,
+                onTap: () => _showSoundSelector(settings, 'orders'),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              _buildMenuRow(
+                icon: LucideIcons.music,
+                label: 'Chat Alerts',
+                subtitle: settings.chatSound.displayName,
+                onTap: () => _showSoundSelector(settings, 'chat'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+        _buildSectionTitle('QUIET HOURS'),
+        const SizedBox(height: 12),
+        _buildGlassCard(
+          child: Column(
+            children: [
+              _buildSwitchRow(
+                icon: LucideIcons.moonStar,
+                label: 'Do Not Disturb',
+                subtitle: settings.quietHoursEnabled 
+                    ? settings.quietHoursDescription 
+                    : 'Silence notifications during set hours',
+                value: settings.quietHoursEnabled,
+                onChanged: (value) => settings.setQuietHoursEnabled(value),
+              ),
+              if (settings.quietHoursEnabled) ...[
+                const Divider(color: Colors.white12, height: 24),
+                _buildMenuRow(
+                  icon: LucideIcons.clock,
+                  label: 'Start Time',
+                  subtitle: _formatTimeOfDay(settings.quietHoursStart),
+                  onTap: () => _selectQuietHoursTime(settings, isStart: true),
+                ),
+                const Divider(color: Colors.white12, height: 24),
+                _buildMenuRow(
+                  icon: LucideIcons.clock,
+                  label: 'End Time',
+                  subtitle: _formatTimeOfDay(settings.quietHoursEnd),
+                  onTap: () => _selectQuietHoursTime(settings, isStart: false),
+                ),
+                const Divider(color: Colors.white12, height: 24),
+                _buildSwitchRow(
+                  icon: LucideIcons.calendar,
+                  label: 'Include Weekends',
+                  subtitle: 'Apply quiet hours on Sat & Sun',
+                  value: settings.quietHoursWeekends,
+                  onChanged: (value) => settings.setQuietHoursWeekends(value),
+                ),
+              ],
             ],
           ),
         ),
@@ -472,6 +684,138 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
   
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  Future<void> _selectQuietHoursTime(SettingsService settings, {required bool isStart}) async {
+    final initialTime = isStart ? settings.quietHoursStart : settings.quietHoursEnd;
+    
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppTheme.accentGreen,
+              onPrimary: Colors.black,
+              surface: AppTheme.darkGray,
+              onSurface: Colors.white,
+            ),
+            dialogBackgroundColor: AppTheme.darkGray,
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null) {
+      if (isStart) {
+        await settings.setQuietHoursStart(picked);
+      } else {
+        await settings.setQuietHoursEnd(picked);
+      }
+    }
+  }
+
+  void _showSoundSelector(SettingsService settings, String soundType) {
+    NotificationSound currentSound;
+    String title;
+    
+    switch (soundType) {
+      case 'quotes':
+        currentSound = settings.quotesSound;
+        title = 'Quote Alert Sound';
+        break;
+      case 'orders':
+        currentSound = settings.ordersSound;
+        title = 'Order Alert Sound';
+        break;
+      case 'chat':
+        currentSound = settings.chatSound;
+        title = 'Chat Alert Sound';
+        break;
+      default:
+        currentSound = settings.notificationSound;
+        title = 'Notification Sound';
+    }
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.darkGray,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Select a sound for this notification type',
+              style: TextStyle(color: Colors.grey[500], fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            ...NotificationSound.values.map((sound) => ListTile(
+              leading: Icon(
+                currentSound == sound ? LucideIcons.circleCheck : LucideIcons.circle,
+                color: currentSound == sound ? AppTheme.accentGreen : Colors.grey,
+              ),
+              title: Text(sound.displayName, style: const TextStyle(color: Colors.white)),
+              subtitle: Text(sound.description, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+              trailing: sound != NotificationSound.silent
+                  ? IconButton(
+                      icon: const Icon(LucideIcons.play, color: AppTheme.accentGreen, size: 20),
+                      onPressed: () {
+                        // Play preview sound
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Playing ${sound.displayName} sound...'),
+                            backgroundColor: AppTheme.accentGreen,
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                    )
+                  : null,
+              onTap: () async {
+                switch (soundType) {
+                  case 'quotes':
+                    await settings.setQuotesSound(sound);
+                    break;
+                  case 'orders':
+                    await settings.setOrdersSound(sound);
+                    break;
+                  case 'chat':
+                    await settings.setChatSound(sound);
+                    break;
+                  default:
+                    await settings.setNotificationSound(sound);
+                }
+                if (mounted) Navigator.pop(context);
+              },
+            )),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
