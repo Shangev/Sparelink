@@ -17,7 +17,12 @@ export default function LoginPage() {
   useEffect(() => {
     const checkExistingSession = async () => {
       try {
-        const { session } = await getCurrentSession()
+        const { session, error: sessionError } = await getCurrentSession()
+        if (sessionError) {
+          console.error("Session error:", sessionError)
+          setCheckingSession(false)
+          return
+        }
         if (session) {
           // Verify user is a shop owner
           const { data: profile } = await supabase
@@ -51,10 +56,13 @@ export default function LoginPage() {
     setError("")
     
     try {
-      const { error } = await supabase.auth.signInWithOtp({ phone })
+      console.log("Attempting OTP sign in for:", phone)
+      const { data, error } = await supabase.auth.signInWithOtp({ phone })
+      console.log("OTP response:", { data, error })
       if (error) throw error
       setStep("otp")
     } catch (err: any) {
+      console.error("OTP error details:", err)
       setError(err.message || "Failed to send OTP")
     } finally {
       setLoading(false)

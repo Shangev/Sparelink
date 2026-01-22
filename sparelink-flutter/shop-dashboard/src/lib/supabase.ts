@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Hardcoded fallback for production (Vercel env vars can be tricky)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zcxsbfzezfjnkxwnnklf.supabase.co'
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeHNiZnplemZqbmt4d25ua2xmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNDY1MjIsImV4cCI6MjA4MzcyMjUyMn0.lHSBwHRery2A5wMy0A2Zhlk-HzTvWXhGR0GIjybrlec'
+// Supabase configuration
+const supabaseUrl = 'https://zcxsbfzezfjnkxwnnklf.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeHNiZnplemZqbmt4d25ua2xmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNDY1MjIsImV4cCI6MjA4MzcyMjUyMn0.lHSBwHRery2A5wMy0A2Zhlk-HzTvWXhGR0GIjybrlec'
 
 // Create Supabase client with session persistence enabled
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -14,7 +14,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // Auto-refresh session before expiry
     autoRefreshToken: true,
     // Detect session from URL (for OAuth callbacks, NOT for SSO tokens)
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
   },
 })
 
