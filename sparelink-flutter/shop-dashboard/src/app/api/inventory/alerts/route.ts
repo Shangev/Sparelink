@@ -67,7 +67,21 @@ export async function GET(request: NextRequest) {
     };
 
     // Generate alerts
-    const alerts = [];
+    interface Alert {
+      type: 'critical' | 'warning' | 'info';
+      category: string;
+      item_id: string;
+      item_name: string;
+      part_number?: string;
+      current_stock?: number;
+      reorder_level?: number;
+      request_count?: number;
+      message: string;
+      action: string;
+      created_at: string;
+    }
+    
+    const alerts: Alert[] = [];
 
     // Critical: Out of stock alerts
     outOfStockItems?.forEach(item => {

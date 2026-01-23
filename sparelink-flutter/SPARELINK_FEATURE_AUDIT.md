@@ -383,6 +383,9 @@
 | 2026-01-23 | Database Migration | SQL | `commerce_infrastructure_migration.sql` - Full schema for payments, inventory, CRM |
 | 2026-01-23 | Business Logic Tests | Tests | `__tests__/payments.test.ts`, `__tests__/inventory.test.ts` - Unit tests for all modules |
 | 2026-01-23 | API Documentation | Docs | `API_DOCUMENTATION.md` - Complete REST API reference |
+| 2026-01-23 | Real Database Integration | Shop Dashboard | Inventory, Customers, Analytics pages now use real Supabase data instead of mock data |
+| 2026-01-23 | Shop Profile Enhancement | Shop Dashboard | `settings/page.tsx` - Logo/banner upload, social media links, specialties, payment methods, business registration |
+| 2026-01-23 | Shop Profile Migration | SQL | `shop_profile_migration.sql` - New columns for logo, banner, social links, specialties, VAT |
 
 ---
 
@@ -407,4 +410,5 @@
 | 2026-01-22 | Completed all 5 Shop Dashboard Settings items: Shop Address Sync (Photon), Staff Management (Team tab), Role Permissions (Admin/Staff), Business Hours (existing), Holiday Calendar (SA holidays) |
 | 2026-01-23 | Completed all 5 Shop Dashboard Business Modules: Payment Processing (Paystack), Invoice Generation (PDF), Inventory Management (CRUD), Business Intelligence (Analytics), Customer Database (CRM) |
 | 2026-01-23 | Added advanced features: Payment webhooks, email invoices, inventory alerts. Created database migrations, unit tests, and full API documentation |
+| 2026-01-23 | Connected Inventory, Customers, Analytics pages to real Supabase database. Added comprehensive Shop Profile section with logo/banner upload, social media, specialties, payment methods, and business registration |
 
