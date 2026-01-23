@@ -86,14 +86,14 @@
 
 | Status | Issue | Priority | Description |
 |--------|-------|----------|-------------|
-| ❌ | No Real-time Tracking | High | No GPS tracking of delivery |
-| ❌ | No Delivery Time Estimates | Medium | No ETA updates |
-| ❌ | No Delivery Photos | Medium | Driver can't upload proof of delivery |
-| ❌ | No Delivery Instructions | Medium | Can't add "leave at gate" notes |
-| ❌ | No Alternative Addresses | Medium | Can only deliver to profile address |
-| ❌ | No Order History | Medium | Past orders hard to find |
-| ❌ | No Reorder Function | Low | Can't quickly reorder same part |
-| ❌ | No Receipt/Invoice | High | No downloadable invoice |
+| ✅ | No Real-time Tracking | High | `order_tracking_screen.dart` - Google Maps integration showing driver GPS location |
+| ✅ | No Delivery Time Estimates | Medium | `order_tracking_screen.dart` - Dynamic ETA card with hours/minutes display |
+| ✅ | No Delivery Photos | Medium | `order_tracking_screen.dart` - Proof of delivery photo display with full-screen viewer |
+| ✅ | No Delivery Instructions | Medium | `delivery_options_sheet.dart` - Text field for drop-off notes (200 char limit) |
+| ✅ | No Alternative Addresses | Medium | `delivery_options_sheet.dart` - Select saved addresses per order |
+| ✅ | No Order History | Medium | `order_history_screen.dart` - Past orders with search/filter by status |
+| ✅ | No Reorder Function | Low | `order_history_screen.dart` - Buy Again button on delivered orders |
+| ✅ | No Receipt/Invoice | High | `invoice_service.dart` - PDF generation with VAT, share/print functionality |
 
 ### 8. PAYMENTS
 
