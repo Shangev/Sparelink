@@ -67,6 +67,10 @@ dependencies:
   google_maps_flutter: ^2.5.3
   geolocator: ^10.1.0
 
+  # Payment Processing
+  flutter_paystack_plus: ^2.0.0
+  webview_flutter: ^4.4.2
+
   # Push Notifications - Firebase Cloud Messaging
   # NOTE: Run 'flutterfire configure' after setting up your Firebase project
   firebase_core: ^3.8.1

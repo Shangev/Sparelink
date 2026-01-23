@@ -32,6 +32,10 @@ import '../../features/profile/presentation/about_screen.dart';
 import '../../features/profile/presentation/addresses_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
+import '../../features/payments/presentation/checkout_screen.dart';
+import '../../features/payments/presentation/saved_cards_screen.dart';
+import '../../features/payments/presentation/refund_request_screen.dart';
+import '../../features/payments/presentation/transactions_screen.dart';
 import '../../shared/widgets/responsive_shell.dart';
 import '../theme/app_theme.dart';
 
@@ -390,6 +394,38 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/notifications',
             name: 'notifications',
             builder: (context, state) => const NotificationsScreen(),
+          ),
+          
+          // Payment Routes
+          GoRoute(
+            path: '/checkout/:orderId',
+            name: 'checkout',
+            builder: (context, state) {
+              final order = state.extra as Order?;
+              if (order == null) {
+                return const HomeScreen();
+              }
+              return CheckoutScreen(order: order);
+            },
+          ),
+          GoRoute(
+            path: '/payment-methods',
+            name: 'payment-methods',
+            builder: (context, state) => const SavedCardsScreen(),
+          ),
+          GoRoute(
+            path: '/transactions',
+            name: 'transactions',
+            builder: (context, state) => const TransactionsScreen(),
+          ),
+          GoRoute(
+            path: '/refund/:orderId',
+            name: 'refund',
+            builder: (context, state) {
+              final orderId = state.pathParameters['orderId']!;
+              final order = state.extra as Order?;
+              return RefundRequestScreen(orderId: orderId, order: order);
+            },
           ),
         ],
       ),
