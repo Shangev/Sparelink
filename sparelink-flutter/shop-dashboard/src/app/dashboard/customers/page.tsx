@@ -118,7 +118,7 @@ export default function CustomersPage() {
           )
         `)
         .eq('shop_id', shopIdParam)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }) as { data: any[] | null; error: any }
 
       if (ordersError) throw ordersError
 
@@ -134,7 +134,7 @@ export default function CustomersPage() {
             phone
           )
         `)
-        .eq('shop_id', shopIdParam)
+        .eq('shop_id', shopIdParam) as { data: any[] | null; error: any }
 
       // Build customer map from orders
       const customerMap = new Map<string, Customer>()
@@ -280,7 +280,7 @@ export default function CustomersPage() {
     .sort((a, b) => {
       if (sortBy === "spent") return b.total_spent - a.total_spent
       if (sortBy === "orders") return b.total_orders - a.total_orders
-      return new Date(b.last_order).getTime() - new Date(a.last_order).getTime()
+      return new Date(b.last_order || 0).getTime() - new Date(a.last_order || 0).getTime()
     })
 
   // Stats

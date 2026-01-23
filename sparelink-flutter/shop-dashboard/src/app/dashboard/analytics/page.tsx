@@ -127,7 +127,14 @@ export default function AnalyticsPage() {
         `)
         .eq('shop_id', shopIdParam)
         .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }) as { data: Array<{
+          id: string;
+          total_cents: number | null;
+          status: string | null;
+          payment_status: string | null;
+          created_at: string;
+          part_requests: { part_category: string | null } | null;
+        }> | null; error: any }
 
       if (ordersError) throw ordersError
 
@@ -165,7 +172,7 @@ export default function AnalyticsPage() {
 
       // Calculate category breakdown
       const categoryMap: Record<string, number> = {}
-      paidOrders.forEach(order => {
+      paidOrders.forEach((order: any) => {
         const category = order.part_requests?.part_category || 'Other'
         categoryMap[category] = (categoryMap[category] || 0) + ((order.total_cents || 0) / 100)
       })

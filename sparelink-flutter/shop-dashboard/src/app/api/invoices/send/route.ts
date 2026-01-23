@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Initialize Supabase client lazily to avoid build-time errors
+let supabase: SupabaseClient | null = null;
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables not configured');
+    }
+    
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
+  }
+  return supabase;
+}
 
 /**
  * Send Invoice Email
@@ -188,6 +200,8 @@ export async function POST(request: NextRequest) {
     if (!order_id) {
       return NextResponse.json({ error: 'Missing order_id' }, { status: 400 });
     }
+
+    const supabase = getSupabaseClient();
 
     // Fetch order with related data
     const { data: order, error: orderError } = await supabase
