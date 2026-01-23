@@ -371,6 +371,18 @@
 | 2026-01-23 | Inventory Management | Shop Dashboard | `inventory/page.tsx` - Full CRUD for parts with categories, pricing, stock levels, low stock alerts, CSV export |
 | 2026-01-23 | Business Intelligence | Shop Dashboard | `analytics/page.tsx` - Revenue charts, top selling parts, staff performance metrics, category breakdown |
 | 2026-01-23 | Customer Database | Shop Dashboard | `customers/page.tsx` - CRM with loyalty tiers (Bronze/Silver/Gold/Platinum), order history, customer notes |
+| 2026-01-23 | Payment Webhooks | API | `api/payments/webhook` - Paystack webhook handler with signature verification, auto order updates |
+| 2026-01-23 | Payment Initialize | API | `api/payments/initialize` - Create Paystack payment sessions with metadata tracking |
+| 2026-01-23 | Payment Verify | API | `api/payments/verify` - Manual payment verification endpoint |
+| 2026-01-23 | Email Invoices | API | `api/invoices/send` - Professional HTML invoice emails via Resend |
+| 2026-01-23 | Invoice Generator | API | `api/invoices/generate` - Sequential invoice number generation |
+| 2026-01-23 | Inventory API | API | `api/inventory` - Full CRUD REST API for inventory management |
+| 2026-01-23 | Inventory Alerts | API | `api/inventory/alerts` - Low stock and out of stock alert system |
+| 2026-01-23 | Customer API | API | `api/customers` - CRM REST API with loyalty tier management |
+| 2026-01-23 | Analytics API | API | `api/analytics` - Business intelligence data endpoint |
+| 2026-01-23 | Database Migration | SQL | `commerce_infrastructure_migration.sql` - Full schema for payments, inventory, CRM |
+| 2026-01-23 | Business Logic Tests | Tests | `__tests__/payments.test.ts`, `__tests__/inventory.test.ts` - Unit tests for all modules |
+| 2026-01-23 | API Documentation | Docs | `API_DOCUMENTATION.md` - Complete REST API reference |
 
 ---
 
@@ -394,4 +406,5 @@
 | 2026-01-22 | Completed all 4 Shop Dashboard Chat System items: Image Sending (Supabase upload), Quick Replies (6 phrases bar), Canned Responses (templates modal), Chat Assignment (staff selection) |
 | 2026-01-22 | Completed all 5 Shop Dashboard Settings items: Shop Address Sync (Photon), Staff Management (Team tab), Role Permissions (Admin/Staff), Business Hours (existing), Holiday Calendar (SA holidays) |
 | 2026-01-23 | Completed all 5 Shop Dashboard Business Modules: Payment Processing (Paystack), Invoice Generation (PDF), Inventory Management (CRUD), Business Intelligence (Analytics), Customer Database (CRM) |
+| 2026-01-23 | Added advanced features: Payment webhooks, email invoices, inventory alerts. Created database migrations, unit tests, and full API documentation |
 
