@@ -386,6 +386,14 @@
 | 2026-01-23 | Real Database Integration | Shop Dashboard | Inventory, Customers, Analytics pages now use real Supabase data instead of mock data |
 | 2026-01-23 | Shop Profile Enhancement | Shop Dashboard | `settings/page.tsx` - Logo/banner upload, social media links, specialties, payment methods, business registration |
 | 2026-01-23 | Shop Profile Migration | SQL | `shop_profile_migration.sql` - New columns for logo, banner, social links, specialties, VAT |
+| 2026-01-23 | Invoice/Receipt Download | Flutter App | `invoice_service.dart` - PDF generation with VAT, share/print functionality |
+| 2026-01-23 | Real-time GPS Tracking | Flutter App | `order_tracking_screen.dart` - Google Maps integration showing driver location |
+| 2026-01-23 | Delivery ETA | Flutter App | `order_tracking_screen.dart` - Dynamic ETA display based on driver distance |
+| 2026-01-23 | Proof of Delivery Photos | Flutter App | `order_tracking_screen.dart` - Display delivery confirmation photos |
+| 2026-01-23 | Delivery Instructions | Flutter App | `delivery_options_sheet.dart` - Text field for drop-off notes |
+| 2026-01-23 | Alternative Addresses | Flutter App | `delivery_options_sheet.dart` - Select different delivery address per order |
+| 2026-01-23 | Order History | Flutter App | `order_history_screen.dart` - Past orders with search/filter by status |
+| 2026-01-23 | Reorder Function | Flutter App | `order_history_screen.dart` - Buy Again button for quick reordering |
 
 ---
 
@@ -411,4 +419,5 @@
 | 2026-01-23 | Completed all 5 Shop Dashboard Business Modules: Payment Processing (Paystack), Invoice Generation (PDF), Inventory Management (CRUD), Business Intelligence (Analytics), Customer Database (CRM) |
 | 2026-01-23 | Added advanced features: Payment webhooks, email invoices, inventory alerts. Created database migrations, unit tests, and full API documentation |
 | 2026-01-23 | Connected Inventory, Customers, Analytics pages to real Supabase database. Added comprehensive Shop Profile section with logo/banner upload, social media, specialties, payment methods, and business registration |
+| 2026-01-23 | Implemented Order & Delivery features for Flutter mechanic app: PDF Invoice generation, Real-time GPS tracking with Google Maps, Dynamic ETA estimates, Proof of Delivery photos, Delivery Instructions, Alternative Addresses selection, Order History with search/filter, Buy Again/Reorder functionality |
 

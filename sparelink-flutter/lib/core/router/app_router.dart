@@ -23,6 +23,7 @@ import '../../features/marketplace/presentation/shop_detail_screen.dart';
 import '../../features/marketplace/presentation/quote_comparison_screen.dart';
 import '../../shared/models/marketplace.dart';
 import '../../features/orders/presentation/order_tracking_screen.dart';
+import '../../features/orders/presentation/order_history_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/edit_profile_screen.dart';
 import '../../features/profile/presentation/settings_screen.dart';
@@ -341,6 +342,13 @@ final routerProvider = Provider<GoRouter>((ref) {
               final orderId = state.pathParameters['orderId']!;
               return OrderTrackingScreen(orderId: orderId);
             },
+          ),
+          
+          // Order History
+          GoRoute(
+            path: '/orders',
+            name: 'orders',
+            builder: (context, state) => const OrderHistoryScreen(),
           ),
           
           // Profile Routes

@@ -3,12 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/models/marketplace.dart';
 import '../../../shared/services/supabase_service.dart';
+import '../../../shared/services/invoice_service.dart';
 
 /// Order Tracking Screen
-/// Shows real-time delivery status and progress
+/// Shows real-time delivery status and progress with map, ETA, and invoice
 class OrderTrackingScreen extends ConsumerStatefulWidget {
   final String orderId;
 
@@ -26,6 +29,9 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
   bool _isLoading = true;
   String? _error;
   RealtimeChannel? _orderSubscription;
+  GoogleMapController? _mapController;
+  bool _showMap = false;
+  bool _isDownloadingInvoice = false;
 
   @override
   void initState() {
@@ -166,30 +172,50 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
             // Status Header
             _buildStatusHeader(order),
             
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+            
+            // ETA Card (if out for delivery)
+            if (order.status == OrderStatus.outForDelivery && order.etaMinutes != null)
+              _buildETACard(order),
+            
+            const SizedBox(height: 24),
+            
+            // Live Map (if out for delivery with driver location)
+            if (order.status == OrderStatus.outForDelivery)
+              _buildMapSection(order),
+            
+            const SizedBox(height: 24),
             
             // Progress Timeline
             _buildProgressTimeline(order),
             
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             
             // Delivery Info Card
             _buildDeliveryInfoCard(order),
             
-            const SizedBox(height: 24),
+            // Delivery Instructions (if any)
+            if (order.deliveryInstructions != null && order.deliveryInstructions!.isNotEmpty)
+              _buildDeliveryInstructionsCard(order),
+            
+            const SizedBox(height: 16),
             
             // Driver Card (if out for delivery)
             if (order.status == OrderStatus.outForDelivery)
               _buildDriverCard(order),
+            
+            // Proof of Delivery (if delivered with photo)
+            if (order.status == OrderStatus.delivered && order.proofOfDeliveryUrl != null)
+              _buildProofOfDeliveryCard(order),
             
             const SizedBox(height: 24),
             
             // Order Summary
             _buildOrderSummary(order),
             
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             
-            // Action Buttons
+            // Action Buttons (Invoice, Help, etc.)
             _buildActionButtons(),
             
             const SizedBox(height: 40),
@@ -606,9 +632,327 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
     );
   }
 
+  Widget _buildETACard(Order order) {
+    final eta = order.etaMinutes ?? 0;
+    final hours = eta ~/ 60;
+    final minutes = eta % 60;
+    String etaText;
+    
+    if (hours > 0) {
+      etaText = '$hours hr ${minutes > 0 ? '$minutes min' : ''}';
+    } else {
+      etaText = '$minutes min';
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.accentGreen.withOpacity(0.2),
+            AppTheme.accentGreen.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.accentGreen.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppTheme.accentGreen,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(LucideIcons.clock, color: Colors.black, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Estimated Arrival',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  etaText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (order.etaUpdatedAt != null)
+                  Text(
+                    'Updated ${_formatTimeAgo(order.etaUpdatedAt!)}',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTimeAgo(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    return '${diff.inHours} hr ago';
+  }
+
+  Widget _buildMapSection(Order order) {
+    final hasDriverLocation = order.driverLat != null && order.driverLng != null;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Toggle Map Button
+        GestureDetector(
+          onTap: () => setState(() => _showMap = !_showMap),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  LucideIcons.map,
+                  color: hasDriverLocation ? AppTheme.accentGreen : Colors.white54,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    hasDriverLocation ? 'Track Driver Live' : 'Live Tracking',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Icon(
+                  _showMap ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  color: Colors.white54,
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        // Map View (expandable)
+        if (_showMap) ...[
+          const SizedBox(height: 12),
+          Container(
+            height: 250,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: hasDriverLocation
+                ? GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(order.driverLat!, order.driverLng!),
+                      zoom: 15,
+                    ),
+                    markers: {
+                      Marker(
+                        markerId: const MarkerId('driver'),
+                        position: LatLng(order.driverLat!, order.driverLng!),
+                        infoWindow: InfoWindow(title: order.driverName ?? 'Driver'),
+                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                      ),
+                    },
+                    onMapCreated: (controller) => _mapController = controller,
+                    myLocationEnabled: true,
+                    zoomControlsEnabled: false,
+                    mapToolbarEnabled: false,
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.mapPinOff, size: 48, color: Colors.white.withOpacity(0.3)),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Driver location not available yet',
+                          style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDeliveryInstructionsCard(Order order) {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(LucideIcons.messageSquare, color: Colors.amber, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Delivery Instructions',
+                  style: TextStyle(
+                    color: Colors.amber,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  order.deliveryInstructions!,
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProofOfDeliveryCard(Order order) {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.accentGreen.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.camera, color: AppTheme.accentGreen, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Proof of Delivery',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              Icon(LucideIcons.circleCheck, color: AppTheme.accentGreen, size: 18),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => _showFullImage(order.proofOfDeliveryUrl!),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                order.proofOfDeliveryUrl!,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    height: 180,
+                    color: Colors.white.withOpacity(0.1),
+                    child: const Center(
+                      child: CircularProgressIndicator(color: AppTheme.accentGreen),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) => Container(
+                  height: 180,
+                  color: Colors.white.withOpacity(0.1),
+                  child: const Center(
+                    child: Icon(LucideIcons.imageOff, color: Colors.white54, size: 48),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap to view full image',
+            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFullImage(String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              child: Image.network(imageUrl),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                icon: const Icon(LucideIcons.x, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionButtons() {
+    final order = _order;
+    
     return Column(
       children: [
+        // Download Invoice Button
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            onPressed: _isDownloadingInvoice ? null : _downloadInvoice,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentGreen,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: _isDownloadingInvoice
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                  )
+                : const Icon(LucideIcons.fileText, size: 18),
+            label: Text(_isDownloadingInvoice ? 'Generating...' : 'Download Invoice'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        
         // Return to Home
         SizedBox(
           width: double.infinity,
@@ -627,6 +971,26 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        
+        // View Order History
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => context.push('/orders'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: BorderSide(color: Colors.white.withOpacity(0.3)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(LucideIcons.history, size: 18),
+            label: const Text('Order History'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        
         // Contact Support
         SizedBox(
           width: double.infinity,
@@ -646,5 +1010,35 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _downloadInvoice() async {
+    if (_order == null) return;
+    
+    setState(() => _isDownloadingInvoice = true);
+    
+    try {
+      final invoiceService = InvoiceService();
+      await invoiceService.shareInvoice(_order!);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice ready!'),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating invoice: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDownloadingInvoice = false);
+      }
+    }
   }
 }

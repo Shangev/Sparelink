@@ -348,6 +348,22 @@ class Order {
   final String? driverPhone;
   final DateTime? deliveredAt;
   final DateTime createdAt;
+  
+  // New fields for enhanced delivery features
+  final String? deliveryInstructions;  // Drop-off notes from mechanic
+  final String? proofOfDeliveryUrl;    // Photo uploaded by driver
+  final double? driverLat;             // Driver's current latitude
+  final double? driverLng;             // Driver's current longitude
+  final int? etaMinutes;               // Estimated time of arrival
+  final DateTime? etaUpdatedAt;        // When ETA was last calculated
+  final String? invoiceNumber;         // Invoice number for PDF
+  final String? paymentStatus;         // pending, paid, failed
+  final String? paymentReference;      // Payment provider reference
+  final String? customerName;          // Customer name for invoice
+  final String? customerPhone;         // Customer phone
+  final String? customerEmail;         // Customer email
+  final String? partCategory;          // Part category for invoice
+  final String? vehicleInfo;           // Vehicle make/model/year
 
   Order({
     required this.id,
@@ -363,6 +379,20 @@ class Order {
     this.driverPhone,
     this.deliveredAt,
     required this.createdAt,
+    this.deliveryInstructions,
+    this.proofOfDeliveryUrl,
+    this.driverLat,
+    this.driverLng,
+    this.etaMinutes,
+    this.etaUpdatedAt,
+    this.invoiceNumber,
+    this.paymentStatus,
+    this.paymentReference,
+    this.customerName,
+    this.customerPhone,
+    this.customerEmail,
+    this.partCategory,
+    this.vehicleInfo,
   });
 
   /// Total in Rands
@@ -395,12 +425,33 @@ class Order {
   }
 
   factory Order.fromJson(Map<String, dynamic> json) {
+    // Handle nested part_requests data for invoice
+    String? partCategory;
+    String? vehicleInfo;
+    String? customerName;
+    String? customerPhone;
+    String? customerEmail;
+    
+    if (json['part_requests'] != null) {
+      final pr = json['part_requests'];
+      partCategory = pr['part_category'] ?? pr['part_name'];
+      if (pr['vehicle_make'] != null) {
+        vehicleInfo = '${pr['vehicle_make']} ${pr['vehicle_model'] ?? ''} ${pr['vehicle_year'] ?? ''}'.trim();
+      }
+      // Customer info from profiles join
+      if (pr['profiles'] != null) {
+        customerName = pr['profiles']['full_name'];
+        customerPhone = pr['profiles']['phone'];
+        customerEmail = pr['profiles']['email'];
+      }
+    }
+    
     return Order(
       id: json['id'],
       requestId: json['request_id'],
       offerId: json['offer_id'],
       offer: json['offer'] != null ? Offer.fromJson(json['offer']) : null,
-      totalCents: json['total_cents'],
+      totalCents: json['total_cents'] ?? 0,
       paymentMethod: json['payment_method'] ?? 'cod',
       status: _parseOrderStatus(json['status']),
       deliveryTo: json['delivery_to'] == 'mechanic' 
@@ -412,7 +463,26 @@ class Order {
       deliveredAt: json['delivered_at'] != null 
           ? DateTime.parse(json['delivered_at']) 
           : null,
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
+      // New fields
+      deliveryInstructions: json['delivery_instructions'],
+      proofOfDeliveryUrl: json['proof_of_delivery_url'],
+      driverLat: json['driver_lat']?.toDouble(),
+      driverLng: json['driver_lng']?.toDouble(),
+      etaMinutes: json['eta_minutes'],
+      etaUpdatedAt: json['eta_updated_at'] != null 
+          ? DateTime.parse(json['eta_updated_at']) 
+          : null,
+      invoiceNumber: json['invoice_number'],
+      paymentStatus: json['payment_status'],
+      paymentReference: json['payment_reference'],
+      customerName: customerName ?? json['customer_name'],
+      customerPhone: customerPhone ?? json['customer_phone'],
+      customerEmail: customerEmail ?? json['customer_email'],
+      partCategory: partCategory ?? json['part_category'],
+      vehicleInfo: vehicleInfo ?? json['vehicle_info'],
     );
   }
 
@@ -430,6 +500,20 @@ class Order {
       'driver_phone': driverPhone,
       'delivered_at': deliveredAt?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
+      'delivery_instructions': deliveryInstructions,
+      'proof_of_delivery_url': proofOfDeliveryUrl,
+      'driver_lat': driverLat,
+      'driver_lng': driverLng,
+      'eta_minutes': etaMinutes,
+      'eta_updated_at': etaUpdatedAt?.toIso8601String(),
+      'invoice_number': invoiceNumber,
+      'payment_status': paymentStatus,
+      'payment_reference': paymentReference,
+      'customer_name': customerName,
+      'customer_phone': customerPhone,
+      'customer_email': customerEmail,
+      'part_category': partCategory,
+      'vehicle_info': vehicleInfo,
     };
   }
 
