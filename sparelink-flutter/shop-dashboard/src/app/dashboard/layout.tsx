@@ -21,7 +21,11 @@ import {
   Bell,
   Menu,
   X,
-  MessageSquare
+  MessageSquare,
+  Boxes,
+  BarChart3,
+  Users,
+  CreditCard
 } from "lucide-react"
 
 interface ShopData {
@@ -101,6 +105,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: "/dashboard/quotes", icon: Send, label: "My Quotes" },
     { href: "/dashboard/chats", icon: MessageSquare, label: "Chats" },
     { href: "/dashboard/orders", icon: Package, label: "Orders" },
+    { href: "/dashboard/inventory", icon: Boxes, label: "Inventory" },
+    { href: "/dashboard/customers", icon: Users, label: "Customers" },
+    { href: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
     { href: "/dashboard/settings", icon: Settings, label: "Settings" },
   ]
 

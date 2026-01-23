@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabase"
-import { Package, Truck, CheckCircle, Clock, MapPin, User, Wrench, RefreshCw, Bell, Printer, Hash, UserCheck, CheckSquare, Square, X, Save, ChevronDown, FileText, AlertCircle } from "lucide-react"
+import { Package, Truck, CheckCircle, Clock, MapPin, User, Wrench, RefreshCw, Bell, Printer, Hash, UserCheck, CheckSquare, Square, X, Save, ChevronDown, FileText, AlertCircle, CreditCard, Receipt, DollarSign, ExternalLink } from "lucide-react"
 
 interface Order {
   id: string
@@ -14,15 +14,26 @@ interface Order {
   delivery_address: string | null
   tracking_number?: string | null
   assigned_driver?: string | null
+  payment_status?: 'pending' | 'paid' | 'failed'
+  payment_reference?: string | null
+  invoice_number?: string | null
   part_requests?: { 
     vehicle_make: string
     vehicle_model: string
     part_category: string
+    part_description?: string
     mechanic_id: string
-    profiles?: { full_name: string; phone: string }
+    profiles?: { full_name: string; phone: string; email?: string }
   }
-  offers?: { shops: { name: string } }
+  offers?: { 
+    shops: { name: string; address?: string; phone?: string }
+    price_cents?: number
+    delivery_fee_cents?: number
+  }
 }
+
+// Paystack configuration (test keys - replace with live in production)
+const PAYSTACK_PUBLIC_KEY = 'pk_test_xxxxx' // Replace with actual key
 
 interface Driver {
   id: string
@@ -62,6 +73,14 @@ export default function OrdersPage() {
   const [selectedDriver, setSelectedDriver] = useState<string>("")
   const [batchUpdating, setBatchUpdating] = useState(false)
   const labelRef = useRef<HTMLDivElement>(null)
+  const invoiceRef = useRef<HTMLDivElement>(null)
+  
+  // Payment and Invoice state
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentOrder, setPaymentOrder] = useState<Order | null>(null)
+  const [processingPayment, setProcessingPayment] = useState(false)
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false)
+  const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null)
 
   useEffect(() => {
     loadOrders()
@@ -324,6 +343,125 @@ export default function OrdersPage() {
     return driver?.name || driverId
   }
 
+  // Generate invoice number
+  const generateInvoiceNumber = () => {
+    const date = new Date()
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase()
+    return `INV-${year}${month}-${random}`
+  }
+
+  // Process payment via Paystack
+  const handleProcessPayment = async () => {
+    if (!paymentOrder) return
+    
+    setProcessingPayment(true)
+    try {
+      // In production, this would integrate with Paystack's API
+      // For demo, we simulate a payment flow
+      const reference = `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+      
+      // Simulate payment processing
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      // Update order with payment info
+      const invoiceNum = generateInvoiceNumber()
+      await supabase
+        .from("orders")
+        .update({ 
+          payment_status: 'paid',
+          payment_reference: reference,
+          invoice_number: invoiceNum
+        })
+        .eq("id", paymentOrder.id)
+      
+      setOrders(orders.map(o => 
+        o.id === paymentOrder.id 
+          ? { ...o, payment_status: 'paid' as const, payment_reference: reference, invoice_number: invoiceNum }
+          : o
+      ))
+      
+      alert(`Payment successful!\nReference: ${reference}\nInvoice: ${invoiceNum}`)
+      setShowPaymentModal(false)
+      setPaymentOrder(null)
+    } catch (error) {
+      console.error("Payment error:", error)
+      alert("Payment failed. Please try again.")
+    } finally {
+      setProcessingPayment(false)
+    }
+  }
+
+  // Generate and print invoice
+  const handlePrintInvoice = () => {
+    if (!invoiceRef.current || !invoiceOrder) return
+    
+    const printContent = invoiceRef.current.innerHTML
+    const printWindow = window.open('', '_blank', 'width=800,height=600')
+    if (!printWindow) {
+      alert("Please allow pop-ups to print invoices")
+      return
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice ${invoiceOrder.invoice_number || generateInvoiceNumber()}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
+            .invoice { max-width: 800px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #10b981; }
+            .company { font-size: 24px; font-weight: bold; color: #10b981; }
+            .invoice-title { font-size: 32px; font-weight: bold; color: #333; }
+            .invoice-details { text-align: right; }
+            .invoice-number { font-size: 14px; color: #666; margin-top: 5px; }
+            .parties { display: flex; justify-content: space-between; margin-bottom: 30px; }
+            .party { width: 45%; }
+            .party-title { font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 10px; }
+            .party-name { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+            .party-details { font-size: 14px; color: #666; line-height: 1.6; }
+            .items { margin-bottom: 30px; }
+            .items table { width: 100%; border-collapse: collapse; }
+            .items th { background: #f5f5f5; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #666; }
+            .items td { padding: 12px; border-bottom: 1px solid #eee; }
+            .items .amount { text-align: right; }
+            .totals { margin-left: auto; width: 300px; }
+            .totals table { width: 100%; }
+            .totals td { padding: 8px 0; }
+            .totals .label { color: #666; }
+            .totals .value { text-align: right; font-weight: 500; }
+            .totals .grand-total { font-size: 18px; font-weight: bold; border-top: 2px solid #333; padding-top: 12px; }
+            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; text-align: center; }
+            .paid-stamp { position: absolute; top: 50%; right: 50px; transform: rotate(-15deg); font-size: 48px; font-weight: bold; color: rgba(16, 185, 129, 0.3); border: 4px solid rgba(16, 185, 129, 0.3); padding: 10px 20px; }
+            @media print { body { padding: 20px; } }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
+
+  // Get payment status badge
+  const getPaymentBadge = (status?: string) => {
+    switch (status) {
+      case 'paid':
+        return <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Paid</span>
+      case 'failed':
+        return <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs">Failed</span>
+      default:
+        return <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-xs">Pending</span>
+    }
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "delivered": return <CheckCircle className="w-5 h-5 text-green-400" />
@@ -566,14 +704,31 @@ export default function OrdersPage() {
 
               <div className="pt-4 border-t border-gray-800 flex items-center justify-between flex-wrap gap-4">
                 {/* Action Buttons */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => { setLabelOrder(order); setShowLabelModal(true); }}
                     className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg text-sm flex items-center gap-1 transition-colors"
                   >
                     <Printer className="w-4 h-4" />
-                    Print Label
+                    Label
                   </button>
+                  <button
+                    onClick={() => { setInvoiceOrder(order); setShowInvoiceModal(true); }}
+                    className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg text-sm flex items-center gap-1 transition-colors"
+                  >
+                    <Receipt className="w-4 h-4" />
+                    Invoice
+                  </button>
+                  {order.payment_status !== 'paid' && (
+                    <button
+                      onClick={() => { setPaymentOrder(order); setShowPaymentModal(true); }}
+                      className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm flex items-center gap-1 transition-colors"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      Payment
+                    </button>
+                  )}
+                  {getPaymentBadge(order.payment_status)}
                 </div>
 
                 {/* Status Buttons */}
@@ -718,6 +873,257 @@ export default function OrdersPage() {
               >
                 <UserCheck className="w-5 h-5" />
                 Assign Driver
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && paymentOrder && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-md border border-gray-800">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <div>
+                <h3 className="text-xl font-semibold text-white">Process Payment</h3>
+                <p className="text-gray-400 text-sm">Order #{paymentOrder.id.slice(0, 8)}</p>
+              </div>
+              <button onClick={() => { setShowPaymentModal(false); setPaymentOrder(null); }} className="text-gray-400 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              {/* Order Summary */}
+              <div className="bg-[#2d2d2d] rounded-lg p-4">
+                <h4 className="text-white font-medium mb-3">Order Summary</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Part</span>
+                    <span className="text-white">{paymentOrder.part_requests?.part_category || 'Auto Part'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Vehicle</span>
+                    <span className="text-white">{paymentOrder.part_requests?.vehicle_make} {paymentOrder.part_requests?.vehicle_model}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Customer</span>
+                    <span className="text-white">{paymentOrder.part_requests?.profiles?.full_name || 'Customer'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div className="bg-accent/10 border border-accent/30 rounded-lg p-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">Amount to Collect</span>
+                  <span className="text-2xl font-bold text-accent">R{((paymentOrder.total_cents || 0) / 100).toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Payment Methods */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-3">Payment Method</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="p-4 bg-[#2d2d2d] border-2 border-accent rounded-lg text-center hover:bg-[#3d3d3d] transition-colors">
+                    <CreditCard className="w-8 h-8 text-accent mx-auto mb-2" />
+                    <span className="text-white text-sm font-medium">Card Payment</span>
+                    <span className="text-gray-500 text-xs block">via Paystack</span>
+                  </button>
+                  <button className="p-4 bg-[#2d2d2d] border border-gray-700 rounded-lg text-center hover:bg-[#3d3d3d] hover:border-gray-600 transition-colors">
+                    <DollarSign className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                    <span className="text-white text-sm font-medium">Cash/EFT</span>
+                    <span className="text-gray-500 text-xs block">Manual entry</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Paystack Info */}
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="text-blue-300">Secure payment processing by Paystack.</p>
+                  <p className="text-blue-400/70 text-xs mt-1">Cards, bank transfers, and mobile money accepted.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-800 flex gap-3">
+              <button
+                onClick={() => { setShowPaymentModal(false); setPaymentOrder(null); }}
+                className="flex-1 px-4 py-3 border border-gray-700 text-white rounded-lg hover:bg-[#2d2d2d] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProcessPayment}
+                disabled={processingPayment}
+                className="flex-1 px-4 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {processingPayment ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-5 h-5" />
+                    Process Payment
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && invoiceOrder && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-3xl border border-gray-800 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800 sticky top-0 bg-[#1a1a1a]">
+              <div>
+                <h3 className="text-xl font-semibold text-white">Invoice</h3>
+                <p className="text-gray-400 text-sm">Order #{invoiceOrder.id.slice(0, 8)}</p>
+              </div>
+              <button onClick={() => { setShowInvoiceModal(false); setInvoiceOrder(null); }} className="text-gray-400 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            {/* Invoice Preview */}
+            <div className="p-6">
+              <div ref={invoiceRef} className="bg-white text-black rounded-lg p-8">
+                <div className="invoice" style={{position: 'relative'}}>
+                  {/* Paid Stamp */}
+                  {invoiceOrder.payment_status === 'paid' && (
+                    <div className="paid-stamp">PAID</div>
+                  )}
+                  
+                  {/* Header */}
+                  <div className="header" style={{display: 'flex', justifyContent: 'space-between', marginBottom: '40px', paddingBottom: '20px', borderBottom: '2px solid #10b981'}}>
+                    <div>
+                      <div className="company" style={{fontSize: '24px', fontWeight: 'bold', color: '#10b981'}}>{shopName}</div>
+                      <div style={{color: '#666', fontSize: '14px', marginTop: '5px'}}>Auto Parts Supplier</div>
+                    </div>
+                    <div className="invoice-details" style={{textAlign: 'right'}}>
+                      <div className="invoice-title" style={{fontSize: '32px', fontWeight: 'bold', color: '#333'}}>INVOICE</div>
+                      <div className="invoice-number" style={{fontSize: '14px', color: '#666', marginTop: '5px'}}>
+                        {invoiceOrder.invoice_number || generateInvoiceNumber()}
+                      </div>
+                      <div style={{fontSize: '14px', color: '#666'}}>
+                        Date: {new Date(invoiceOrder.created_at).toLocaleDateString('en-ZA')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Parties */}
+                  <div className="parties" style={{display: 'flex', justifyContent: 'space-between', marginBottom: '30px'}}>
+                    <div className="party" style={{width: '45%'}}>
+                      <div className="party-title" style={{fontSize: '12px', color: '#666', textTransform: 'uppercase', marginBottom: '10px'}}>Bill To</div>
+                      <div className="party-name" style={{fontSize: '18px', fontWeight: 'bold', marginBottom: '5px'}}>
+                        {invoiceOrder.part_requests?.profiles?.full_name || 'Customer'}
+                      </div>
+                      <div className="party-details" style={{fontSize: '14px', color: '#666', lineHeight: '1.6'}}>
+                        {invoiceOrder.delivery_address || 'Address not provided'}<br />
+                        {invoiceOrder.part_requests?.profiles?.phone || ''}
+                        {invoiceOrder.part_requests?.profiles?.email && <><br />{invoiceOrder.part_requests.profiles.email}</>}
+                      </div>
+                    </div>
+                    <div className="party" style={{width: '45%'}}>
+                      <div className="party-title" style={{fontSize: '12px', color: '#666', textTransform: 'uppercase', marginBottom: '10px'}}>Ship To</div>
+                      <div className="party-details" style={{fontSize: '14px', color: '#666', lineHeight: '1.6'}}>
+                        {invoiceOrder.delivery_destination === 'mechanic' ? 'Mechanic Workshop' : 'Customer Address'}<br />
+                        {invoiceOrder.delivery_address || 'Address not provided'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items Table */}
+                  <div className="items" style={{marginBottom: '30px'}}>
+                    <table style={{width: '100%', borderCollapse: 'collapse'}}>
+                      <thead>
+                        <tr>
+                          <th style={{background: '#f5f5f5', padding: '12px', textAlign: 'left', fontSize: '12px', textTransform: 'uppercase', color: '#666'}}>Description</th>
+                          <th style={{background: '#f5f5f5', padding: '12px', textAlign: 'left', fontSize: '12px', textTransform: 'uppercase', color: '#666'}}>Vehicle</th>
+                          <th style={{background: '#f5f5f5', padding: '12px', textAlign: 'right', fontSize: '12px', textTransform: 'uppercase', color: '#666'}}>Qty</th>
+                          <th style={{background: '#f5f5f5', padding: '12px', textAlign: 'right', fontSize: '12px', textTransform: 'uppercase', color: '#666'}}>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={{padding: '12px', borderBottom: '1px solid #eee'}}>
+                            <div style={{fontWeight: '500'}}>{invoiceOrder.part_requests?.part_category || 'Auto Part'}</div>
+                            {invoiceOrder.part_requests?.part_description && (
+                              <div style={{fontSize: '12px', color: '#666'}}>{invoiceOrder.part_requests.part_description}</div>
+                            )}
+                          </td>
+                          <td style={{padding: '12px', borderBottom: '1px solid #eee'}}>
+                            {invoiceOrder.part_requests?.vehicle_make} {invoiceOrder.part_requests?.vehicle_model}
+                          </td>
+                          <td style={{padding: '12px', borderBottom: '1px solid #eee', textAlign: 'right'}}>1</td>
+                          <td style={{padding: '12px', borderBottom: '1px solid #eee', textAlign: 'right', fontWeight: '500'}}>
+                            R{((invoiceOrder.total_cents || 0) / 100).toLocaleString()}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Totals */}
+                  <div className="totals" style={{marginLeft: 'auto', width: '300px'}}>
+                    <table style={{width: '100%'}}>
+                      <tbody>
+                        <tr>
+                          <td style={{padding: '8px 0', color: '#666'}}>Subtotal</td>
+                          <td style={{padding: '8px 0', textAlign: 'right', fontWeight: '500'}}>R{((invoiceOrder.total_cents || 0) / 100).toLocaleString()}</td>
+                        </tr>
+                        <tr>
+                          <td style={{padding: '8px 0', color: '#666'}}>VAT (15%)</td>
+                          <td style={{padding: '8px 0', textAlign: 'right', fontWeight: '500'}}>R{(((invoiceOrder.total_cents || 0) / 100) * 0.15).toFixed(2)}</td>
+                        </tr>
+                        <tr className="grand-total">
+                          <td style={{padding: '12px 0', fontSize: '18px', fontWeight: 'bold', borderTop: '2px solid #333'}}>Total</td>
+                          <td style={{padding: '12px 0', textAlign: 'right', fontSize: '18px', fontWeight: 'bold', borderTop: '2px solid #333'}}>
+                            R{(((invoiceOrder.total_cents || 0) / 100) * 1.15).toFixed(2)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Payment Info */}
+                  {invoiceOrder.payment_status === 'paid' && invoiceOrder.payment_reference && (
+                    <div style={{marginTop: '30px', padding: '15px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0'}}>
+                      <div style={{color: '#166534', fontWeight: '500', marginBottom: '5px'}}>Payment Received</div>
+                      <div style={{color: '#15803d', fontSize: '14px'}}>
+                        Reference: {invoiceOrder.payment_reference}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Footer */}
+                  <div className="footer" style={{marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #eee', fontSize: '12px', color: '#666', textAlign: 'center'}}>
+                    <p>Thank you for your business!</p>
+                    <p style={{marginTop: '5px'}}>For queries, contact us at support@sparelink.co.za</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-800 flex gap-3 sticky bottom-0 bg-[#1a1a1a]">
+              <button
+                onClick={() => { setShowInvoiceModal(false); setInvoiceOrder(null); }}
+                className="flex-1 px-4 py-3 border border-gray-700 text-white rounded-lg hover:bg-[#2d2d2d] transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={handlePrintInvoice}
+                className="flex-1 px-4 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Printer className="w-5 h-5" />
+                Print / Download PDF
               </button>
             </div>
           </div>
