@@ -7,13 +7,13 @@ import { Package, Plus, Search, Edit2, Trash2, X, Save, Upload, AlertCircle, Che
 interface InventoryItem {
   id: string
   part_number: string
-  name: string
+  part_name: string
   category: string
   brand: string
-  price: number
+  selling_price: number
   cost_price: number
-  quantity: number
-  min_stock: number
+  stock_quantity: number
+  reorder_level: number
   location: string
   condition: 'new' | 'used' | 'refurbished'
   compatible_vehicles: string[]
@@ -30,13 +30,13 @@ const PART_CATEGORIES = [
 
 const initialItem: Omit<InventoryItem, 'id' | 'created_at' | 'updated_at'> = {
   part_number: "",
-  name: "",
+  part_name: "",
   category: "",
   brand: "",
-  price: 0,
+  selling_price: 0,
   cost_price: 0,
-  quantity: 0,
-  min_stock: 5,
+  stock_quantity: 0,
+  reorder_level: 5,
   location: "",
   condition: "new",
   compatible_vehicles: [],
@@ -54,91 +54,170 @@ export default function InventoryPage() {
   const [formData, setFormData] = useState(initialItem)
   const [saving, setSaving] = useState(false)
   const [vehicleInput, setVehicleInput] = useState("")
+  const [shopId, setShopId] = useState<string | null>(null)
 
   useEffect(() => {
-    loadInventory()
+    initializeAndLoad()
   }, [])
 
-  const loadInventory = () => {
-    // Load from localStorage (in production, would be from Supabase)
+  const initializeAndLoad = async () => {
     try {
-      const saved = localStorage.getItem('sparelink-inventory')
-      if (saved) {
-        setInventory(JSON.parse(saved))
-      } else {
-        // Sample data
-        const sampleData: InventoryItem[] = [
-          {
-            id: '1', part_number: 'BRK-001', name: 'Brake Pads Set', category: 'Brake System',
-            brand: 'Bosch', price: 450, cost_price: 300, quantity: 25, min_stock: 10,
-            location: 'Shelf A1', condition: 'new', compatible_vehicles: ['Toyota Corolla', 'Toyota Camry'],
-            description: 'Premium ceramic brake pads', created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-          },
-          {
-            id: '2', part_number: 'FLT-002', name: 'Oil Filter', category: 'Filters',
-            brand: 'Mann', price: 85, cost_price: 45, quantity: 50, min_stock: 20,
-            location: 'Shelf B2', condition: 'new', compatible_vehicles: ['Universal'],
-            description: 'High-quality oil filter', created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-          },
-          {
-            id: '3', part_number: 'ALT-003', name: 'Alternator', category: 'Electrical',
-            brand: 'Denso', price: 2500, cost_price: 1800, quantity: 3, min_stock: 5,
-            location: 'Shelf C3', condition: 'refurbished', compatible_vehicles: ['VW Golf 7', 'VW Polo'],
-            description: 'Refurbished alternator with 6-month warranty', created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-          },
-        ]
-        setInventory(sampleData)
-        localStorage.setItem('sparelink-inventory', JSON.stringify(sampleData))
+      // Get current user and their shop
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
       }
-    } catch (e) {
-      console.error('Error loading inventory:', e)
+
+      // Get shop ID for this user
+      const { data: shop } = await supabase
+        .from('shops')
+        .select('id')
+        .eq('owner_id', user.id)
+        .single()
+
+      if (shop) {
+        setShopId(shop.id)
+        await loadInventory(shop.id)
+      } else {
+        // Check if user is staff at a shop
+        const { data: staffRecord } = await supabase
+          .from('shop_staff')
+          .select('shop_id')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (staffRecord) {
+          setShopId(staffRecord.shop_id)
+          await loadInventory(staffRecord.shop_id)
+        }
+      }
+    } catch (error) {
+      console.error('Error initializing:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const saveInventory = (items: InventoryItem[]) => {
-    localStorage.setItem('sparelink-inventory', JSON.stringify(items))
-    setInventory(items)
+  const loadInventory = async (shopIdParam: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('inventory')
+        .select('*')
+        .eq('shop_id', shopIdParam)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      
+      // Transform data to match component interface
+      const transformedData: InventoryItem[] = (data || []).map(item => ({
+        id: item.id,
+        part_number: item.part_number || '',
+        part_name: item.part_name || '',
+        category: item.category || '',
+        brand: item.brand || '',
+        selling_price: (item.selling_price || 0) / 100, // Convert from cents
+        cost_price: (item.cost_price || 0) / 100, // Convert from cents
+        stock_quantity: item.stock_quantity || 0,
+        reorder_level: item.reorder_level || 5,
+        location: item.location || '',
+        condition: item.condition || 'new',
+        compatible_vehicles: item.compatible_vehicles || [],
+        description: item.description || '',
+        image_url: item.images?.[0] || '',
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+      }))
+      
+      setInventory(transformedData)
+    } catch (error) {
+      console.error('Error loading inventory:', error)
+    }
   }
 
-  const handleSaveItem = () => {
-    if (!formData.name || !formData.part_number || !formData.category) {
+  const handleSaveItem = async () => {
+    if (!formData.part_name || !formData.part_number || !formData.category) {
       alert('Please fill in Part Number, Name, and Category')
       return
     }
 
+    if (!shopId) {
+      alert('Shop not found. Please try again.')
+      return
+    }
+
     setSaving(true)
-    setTimeout(() => {
-      let updated: InventoryItem[]
-      if (editingItem) {
-        updated = inventory.map(item =>
-          item.id === editingItem.id
-            ? { ...formData, id: editingItem.id, created_at: editingItem.created_at, updated_at: new Date().toISOString() } as InventoryItem
-            : item
-        )
-      } else {
-        const newItem: InventoryItem = {
-          ...formData,
-          id: Date.now().toString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } as InventoryItem
-        updated = [...inventory, newItem]
+    try {
+      const itemData = {
+        shop_id: shopId,
+        part_number: formData.part_number,
+        part_name: formData.part_name,
+        category: formData.category,
+        brand: formData.brand,
+        selling_price: Math.round(formData.selling_price * 100), // Convert to cents
+        cost_price: Math.round(formData.cost_price * 100), // Convert to cents
+        stock_quantity: formData.stock_quantity,
+        reorder_level: formData.reorder_level,
+        location: formData.location,
+        condition: formData.condition,
+        compatible_vehicles: formData.compatible_vehicles,
+        description: formData.description,
+        status: formData.stock_quantity > 0 ? 'in_stock' : 'out_of_stock',
+        updated_at: new Date().toISOString(),
       }
 
-      saveInventory(updated)
+      if (editingItem) {
+        // Update existing item
+        const { error } = await supabase
+          .from('inventory')
+          .update(itemData)
+          .eq('id', editingItem.id)
+          .eq('shop_id', shopId)
+
+        if (error) throw error
+      } else {
+        // Create new item
+        const { error } = await supabase
+          .from('inventory')
+          .insert({
+            ...itemData,
+            created_at: new Date().toISOString(),
+          })
+
+        if (error) throw error
+      }
+
+      // Reload inventory
+      await loadInventory(shopId)
       setShowModal(false)
       setEditingItem(null)
       setFormData(initialItem)
+    } catch (error) {
+      console.error('Error saving item:', error)
+      alert('Failed to save item. Please try again.')
+    } finally {
       setSaving(false)
-    }, 500)
+    }
   }
 
-  const handleDeleteItem = (id: string) => {
-    if (confirm('Delete this inventory item?')) {
-      const updated = inventory.filter(item => item.id !== id)
-      saveInventory(updated)
+  const handleDeleteItem = async (id: string) => {
+    if (!confirm('Delete this inventory item?')) return
+    if (!shopId) return
+
+    try {
+      const { error } = await supabase
+        .from('inventory')
+        .delete()
+        .eq('id', id)
+        .eq('shop_id', shopId)
+
+      if (error) throw error
+      
+      // Reload inventory
+      await loadInventory(shopId)
+    } catch (error) {
+      console.error('Error deleting item:', error)
+      alert('Failed to delete item. Please try again.')
     }
   }
 
@@ -162,8 +241,8 @@ export default function InventoryPage() {
   const exportToCSV = () => {
     const headers = ['Part Number', 'Name', 'Category', 'Brand', 'Price', 'Cost', 'Quantity', 'Location', 'Condition']
     const rows = inventory.map(item => [
-      item.part_number, item.name, item.category, item.brand,
-      item.price, item.cost_price, item.quantity, item.location, item.condition
+      item.part_number, item.part_name, item.category, item.brand,
+      item.selling_price, item.cost_price, item.stock_quantity, item.location, item.condition
     ])
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -177,23 +256,23 @@ export default function InventoryPage() {
   // Filter inventory
   const filteredInventory = inventory.filter(item => {
     const matchesSearch = searchTerm === "" ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.part_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.part_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.brand.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesCategory = filterCategory === "" || item.category === filterCategory
     
     const matchesStock = filterStock === "all" ||
-      (filterStock === "low" && item.quantity <= item.min_stock && item.quantity > 0) ||
-      (filterStock === "out" && item.quantity === 0)
+      (filterStock === "low" && item.stock_quantity <= item.reorder_level && item.stock_quantity > 0) ||
+      (filterStock === "out" && item.stock_quantity === 0)
 
     return matchesSearch && matchesCategory && matchesStock
   })
 
   // Stats
-  const totalValue = inventory.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-  const lowStockCount = inventory.filter(item => item.quantity <= item.min_stock && item.quantity > 0).length
-  const outOfStockCount = inventory.filter(item => item.quantity === 0).length
+  const totalValue = inventory.reduce((sum, item) => sum + (item.selling_price * item.stock_quantity), 0)
+  const lowStockCount = inventory.filter(item => item.stock_quantity <= item.reorder_level && item.stock_quantity > 0).length
+  const outOfStockCount = inventory.filter(item => item.stock_quantity === 0).length
 
   if (loading) {
     return (
@@ -338,17 +417,17 @@ export default function InventoryPage() {
                   <tr key={item.id} className="border-b border-gray-800 hover:bg-[#2d2d2d]">
                     <td className="p-4 font-mono text-accent">{item.part_number}</td>
                     <td className="p-4">
-                      <p className="text-white font-medium">{item.name}</p>
+                      <p className="text-white font-medium">{item.part_name}</p>
                       <p className="text-gray-500 text-sm">{item.condition}</p>
                     </td>
                     <td className="p-4 text-gray-300">{item.category}</td>
                     <td className="p-4 text-gray-300">{item.brand}</td>
-                    <td className="p-4 text-right text-white">R{item.price.toLocaleString()}</td>
-                    <td className="p-4 text-right text-white">{item.quantity}</td>
+                    <td className="p-4 text-right text-white">R{item.selling_price.toLocaleString()}</td>
+                    <td className="p-4 text-right text-white">{item.stock_quantity}</td>
                     <td className="p-4">
-                      {item.quantity === 0 ? (
+                      {item.stock_quantity === 0 ? (
                         <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs">Out of Stock</span>
-                      ) : item.quantity <= item.min_stock ? (
+                      ) : item.stock_quantity <= item.reorder_level ? (
                         <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-xs">Low Stock</span>
                       ) : (
                         <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">In Stock</span>
@@ -411,8 +490,8 @@ export default function InventoryPage() {
                   <label className="block text-sm text-gray-400 mb-2">Name *</label>
                   <input
                     type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    value={formData.part_name}
+                    onChange={(e) => setFormData({ ...formData, part_name: e.target.value })}
                     placeholder="e.g., Brake Pads Set"
                     className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
                   />
@@ -450,8 +529,8 @@ export default function InventoryPage() {
                   <label className="block text-sm text-gray-400 mb-2">Selling Price (R)</label>
                   <input
                     type="number"
-                    value={formData.price || ''}
-                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                    value={formData.selling_price || ''}
+                    onChange={(e) => setFormData({ ...formData, selling_price: parseFloat(e.target.value) || 0 })}
                     placeholder="0.00"
                     className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
                   />
@@ -485,8 +564,8 @@ export default function InventoryPage() {
                   <label className="block text-sm text-gray-400 mb-2">Quantity</label>
                   <input
                     type="number"
-                    value={formData.quantity || ''}
-                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+                    value={formData.stock_quantity || ''}
+                    onChange={(e) => setFormData({ ...formData, stock_quantity: parseInt(e.target.value) || 0 })}
                     placeholder="0"
                     className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
                   />
@@ -495,8 +574,8 @@ export default function InventoryPage() {
                   <label className="block text-sm text-gray-400 mb-2">Min Stock Alert</label>
                   <input
                     type="number"
-                    value={formData.min_stock || ''}
-                    onChange={(e) => setFormData({ ...formData, min_stock: parseInt(e.target.value) || 0 })}
+                    value={formData.reorder_level || ''}
+                    onChange={(e) => setFormData({ ...formData, reorder_level: parseInt(e.target.value) || 0 })}
                     placeholder="5"
                     className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
                   />
@@ -556,10 +635,10 @@ export default function InventoryPage() {
               </div>
 
               {/* Profit Margin Display */}
-              {formData.price > 0 && formData.cost_price > 0 && (
+              {formData.selling_price > 0 && formData.cost_price > 0 && (
                 <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
                   <p className="text-green-400 text-sm">
-                    Profit Margin: R{(formData.price - formData.cost_price).toFixed(2)} ({(((formData.price - formData.cost_price) / formData.price) * 100).toFixed(1)}%)
+                    Profit Margin: R{(formData.selling_price - formData.cost_price).toFixed(2)} ({(((formData.selling_price - formData.cost_price) / formData.selling_price) * 100).toFixed(1)}%)
                   </p>
                 </div>
               )}

@@ -6,14 +6,15 @@ import { Users, Search, Phone, Mail, DollarSign, ShoppingCart, Calendar, Star, T
 
 interface Customer {
   id: string
+  customer_id: string
   name: string
   phone: string
   email?: string
   total_orders: number
   total_spent: number
   avg_order_value: number
-  first_order: string
-  last_order: string
+  first_order: string | null
+  last_order: string | null
   loyalty_tier: 'bronze' | 'silver' | 'gold' | 'platinum'
   notes?: string
   orders: CustomerOrder[]
@@ -34,7 +35,8 @@ const LOYALTY_TIERS = {
   platinum: { min: 50000, color: 'text-purple-400', bg: 'bg-purple-500/20' },
 }
 
-function getLoyaltyTier(totalSpent: number): Customer['loyalty_tier'] {
+function getLoyaltyTier(totalSpentCents: number): Customer['loyalty_tier'] {
+  const totalSpent = totalSpentCents / 100
   if (totalSpent >= 50000) return 'platinum'
   if (totalSpent >= 15000) return 'gold'
   if (totalSpent >= 5000) return 'silver'
@@ -48,92 +50,218 @@ export default function CustomersPage() {
   const [filterTier, setFilterTier] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [sortBy, setSortBy] = useState<"spent" | "orders" | "recent">("spent")
+  const [shopId, setShopId] = useState<string | null>(null)
 
   useEffect(() => {
-    loadCustomers()
+    initializeAndLoad()
   }, [])
 
-  const loadCustomers = async () => {
-    setLoading(true)
+  const initializeAndLoad = async () => {
     try {
-      // Load from localStorage or generate sample data
-      const saved = localStorage.getItem('sparelink-customers')
-      if (saved) {
-        setCustomers(JSON.parse(saved))
-      } else {
-        // Generate sample customer data
-        const sampleCustomers: Customer[] = [
-          {
-            id: '1', name: 'John Mokoena', phone: '+27 82 123 4567', email: 'john@autofix.co.za',
-            total_orders: 23, total_spent: 67500, avg_order_value: 2935,
-            first_order: '2024-03-15', last_order: '2025-01-18',
-            loyalty_tier: 'platinum',
-            notes: 'Preferred mechanic for German cars',
-            orders: [
-              { id: 'o1', date: '2025-01-18', part: 'BMW Brake Pads', amount: 2800, status: 'delivered' },
-              { id: 'o2', date: '2025-01-05', part: 'Oil Filter Set', amount: 450, status: 'delivered' },
-              { id: 'o3', date: '2024-12-20', part: 'Alternator', amount: 4500, status: 'delivered' },
-            ]
-          },
-          {
-            id: '2', name: 'Sarah Nkosi', phone: '+27 83 234 5678', email: 'sarah@quickrepairs.com',
-            total_orders: 15, total_spent: 34200, avg_order_value: 2280,
-            first_order: '2024-06-01', last_order: '2025-01-15',
-            loyalty_tier: 'gold',
-            notes: 'Toyota specialist',
-            orders: [
-              { id: 'o4', date: '2025-01-15', part: 'Shock Absorbers (Pair)', amount: 3200, status: 'shipped' },
-              { id: 'o5', date: '2025-01-02', part: 'Spark Plugs', amount: 680, status: 'delivered' },
-            ]
-          },
-          {
-            id: '3', name: 'Mike Dlamini', phone: '+27 84 345 6789',
-            total_orders: 8, total_spent: 12500, avg_order_value: 1563,
-            first_order: '2024-09-10', last_order: '2025-01-10',
-            loyalty_tier: 'silver',
-            orders: [
-              { id: 'o6', date: '2025-01-10', part: 'Air Filter', amount: 350, status: 'delivered' },
-            ]
-          },
-          {
-            id: '4', name: 'Thabo Ndlovu', phone: '+27 79 456 7890', email: 'thabo@gmail.com',
-            total_orders: 3, total_spent: 4200, avg_order_value: 1400,
-            first_order: '2024-11-20', last_order: '2025-01-08',
-            loyalty_tier: 'bronze',
-            orders: [
-              { id: 'o7', date: '2025-01-08', part: 'Windscreen Wipers', amount: 280, status: 'delivered' },
-            ]
-          },
-          {
-            id: '5', name: 'Linda Mthembu', phone: '+27 82 567 8901', email: 'linda@automasters.co.za',
-            total_orders: 31, total_spent: 89500, avg_order_value: 2887,
-            first_order: '2024-01-05', last_order: '2025-01-20',
-            loyalty_tier: 'platinum',
-            notes: 'VIP customer - priority service',
-            orders: [
-              { id: 'o8', date: '2025-01-20', part: 'Transmission Kit', amount: 8500, status: 'processing' },
-              { id: 'o9', date: '2025-01-12', part: 'Radiator', amount: 3200, status: 'delivered' },
-            ]
-          },
-        ]
-        setCustomers(sampleCustomers)
-        localStorage.setItem('sparelink-customers', JSON.stringify(sampleCustomers))
+      // Get current user and their shop
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
       }
-    } catch (e) {
-      console.error('Error loading customers:', e)
+
+      // Get shop ID for this user
+      const { data: shop } = await supabase
+        .from('shops')
+        .select('id')
+        .eq('owner_id', user.id)
+        .single()
+
+      if (shop) {
+        setShopId(shop.id)
+        await loadCustomers(shop.id)
+      } else {
+        // Check if user is staff at a shop
+        const { data: staffRecord } = await supabase
+          .from('shop_staff')
+          .select('shop_id')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (staffRecord) {
+          setShopId(staffRecord.shop_id)
+          await loadCustomers(staffRecord.shop_id)
+        }
+      }
+    } catch (error) {
+      console.error('Error initializing:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const updateCustomerNotes = (customerId: string, notes: string) => {
-    const updated = customers.map(c =>
-      c.id === customerId ? { ...c, notes } : c
-    )
-    setCustomers(updated)
-    localStorage.setItem('sparelink-customers', JSON.stringify(updated))
-    if (selectedCustomer?.id === customerId) {
-      setSelectedCustomer({ ...selectedCustomer, notes })
+  const loadCustomers = async (shopIdParam: string) => {
+    try {
+      // First, get all unique customers who have placed orders with this shop
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          total_cents,
+          status,
+          created_at,
+          customer_id,
+          part_requests:request_id (
+            part_category,
+            user_id,
+            profiles:user_id (
+              id,
+              full_name,
+              email,
+              phone
+            )
+          )
+        `)
+        .eq('shop_id', shopIdParam)
+        .order('created_at', { ascending: false })
+
+      if (ordersError) throw ordersError
+
+      // Also try to get from shop_customers table if it exists
+      const { data: shopCustomersData } = await supabase
+        .from('shop_customers')
+        .select(`
+          *,
+          profiles:customer_id (
+            id,
+            full_name,
+            email,
+            phone
+          )
+        `)
+        .eq('shop_id', shopIdParam)
+
+      // Build customer map from orders
+      const customerMap = new Map<string, Customer>()
+
+      // Process orders to build customer data
+      ordersData?.forEach(order => {
+        const profile = order.part_requests?.profiles
+        if (!profile?.id) return
+
+        const customerId = profile.id
+        const existing = customerMap.get(customerId)
+
+        const orderAmount = (order.total_cents || 0) / 100
+        const orderData: CustomerOrder = {
+          id: order.id,
+          date: order.created_at,
+          part: order.part_requests?.part_category || 'Auto Part',
+          amount: orderAmount,
+          status: order.status || 'pending'
+        }
+
+        if (existing) {
+          existing.total_orders += 1
+          existing.total_spent += orderAmount
+          existing.orders.push(orderData)
+          if (!existing.first_order || order.created_at < existing.first_order) {
+            existing.first_order = order.created_at
+          }
+          if (!existing.last_order || order.created_at > existing.last_order) {
+            existing.last_order = order.created_at
+          }
+        } else {
+          customerMap.set(customerId, {
+            id: customerId,
+            customer_id: customerId,
+            name: profile.full_name || 'Unknown Customer',
+            phone: profile.phone || '',
+            email: profile.email || undefined,
+            total_orders: 1,
+            total_spent: orderAmount,
+            avg_order_value: orderAmount,
+            first_order: order.created_at,
+            last_order: order.created_at,
+            loyalty_tier: getLoyaltyTier(order.total_cents || 0),
+            notes: '',
+            orders: [orderData]
+          })
+        }
+      })
+
+      // Merge with shop_customers data if available
+      shopCustomersData?.forEach(sc => {
+        const customerId = sc.customer_id
+        const existing = customerMap.get(customerId)
+        
+        if (existing) {
+          // Update with shop_customers data
+          existing.notes = sc.notes || existing.notes
+          existing.loyalty_tier = sc.loyalty_tier || existing.loyalty_tier
+        } else if (sc.profiles) {
+          // Add customer from shop_customers table
+          customerMap.set(customerId, {
+            id: sc.id,
+            customer_id: customerId,
+            name: sc.profiles.full_name || 'Unknown Customer',
+            phone: sc.profiles.phone || '',
+            email: sc.profiles.email || undefined,
+            total_orders: sc.order_count || 0,
+            total_spent: (sc.total_spend || 0) / 100,
+            avg_order_value: sc.order_count > 0 ? ((sc.total_spend || 0) / 100) / sc.order_count : 0,
+            first_order: sc.first_order_at,
+            last_order: sc.last_order_at,
+            loyalty_tier: sc.loyalty_tier || 'bronze',
+            notes: sc.notes || '',
+            orders: []
+          })
+        }
+      })
+
+      // Calculate avg_order_value and loyalty tier for each customer
+      customerMap.forEach(customer => {
+        if (customer.total_orders > 0) {
+          customer.avg_order_value = Math.round(customer.total_spent / customer.total_orders)
+        }
+        customer.loyalty_tier = getLoyaltyTier(customer.total_spent * 100) // Convert back to cents for tier calc
+        // Sort orders by date descending
+        customer.orders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        // Keep only recent 10 orders for display
+        customer.orders = customer.orders.slice(0, 10)
+      })
+
+      setCustomers(Array.from(customerMap.values()))
+    } catch (error) {
+      console.error('Error loading customers:', error)
+    }
+  }
+
+  const updateCustomerNotes = async (customerId: string, notes: string) => {
+    if (!shopId) return
+
+    try {
+      // Try to update in shop_customers table
+      const { error } = await supabase
+        .from('shop_customers')
+        .upsert({
+          shop_id: shopId,
+          customer_id: customerId,
+          notes: notes,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'shop_id,customer_id'
+        })
+
+      if (error) {
+        console.error('Error updating notes:', error)
+      }
+
+      // Update local state
+      const updated = customers.map(c =>
+        c.customer_id === customerId ? { ...c, notes } : c
+      )
+      setCustomers(updated)
+      if (selectedCustomer?.customer_id === customerId) {
+        setSelectedCustomer({ ...selectedCustomer, notes })
+      }
+    } catch (error) {
+      console.error('Error updating customer notes:', error)
     }
   }
 
@@ -321,7 +449,7 @@ export default function CustomersPage() {
                       {selectedCustomer.loyalty_tier}
                     </span>
                   </div>
-                  <p className="text-gray-400 text-sm">Customer since {new Date(selectedCustomer.first_order).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}</p>
+                  <p className="text-gray-400 text-sm">Customer since {selectedCustomer.first_order ? new Date(selectedCustomer.first_order).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' }) : 'N/A'}</p>
                 </div>
               </div>
               <button onClick={() => setSelectedCustomer(null)} className="text-gray-400 hover:text-white">
@@ -364,7 +492,7 @@ export default function CustomersPage() {
                 </div>
                 <div className="text-center p-4 bg-[#2d2d2d] rounded-lg">
                   <p className="text-2xl font-bold text-accent">
-                    {Math.ceil((new Date().getTime() - new Date(selectedCustomer.first_order).getTime()) / (1000 * 60 * 60 * 24 * 30))}
+                    {selectedCustomer.first_order ? Math.ceil((new Date().getTime() - new Date(selectedCustomer.first_order).getTime()) / (1000 * 60 * 60 * 24 * 30)) : 0}
                   </p>
                   <p className="text-gray-500 text-sm">Months</p>
                 </div>
@@ -375,7 +503,7 @@ export default function CustomersPage() {
                 <label className="block text-sm text-gray-400 mb-2">Notes</label>
                 <textarea
                   value={selectedCustomer.notes || ''}
-                  onChange={(e) => updateCustomerNotes(selectedCustomer.id, e.target.value)}
+                  onChange={(e) => updateCustomerNotes(selectedCustomer.customer_id, e.target.value)}
                   placeholder="Add notes about this customer..."
                   rows={2}
                   className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none resize-none"

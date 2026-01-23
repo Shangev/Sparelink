@@ -8,7 +8,7 @@ import {
   revokeAllOtherSessions,
   DeviceSession 
 } from "@/lib/supabase"
-import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2, Search, ShieldCheck, Lock, Shield, Smartphone, Monitor, Tablet, Trash2, LogOut, Users, UserPlus, X, Calendar, Plus, Edit2, Check, AlertTriangle } from "lucide-react"
+import { Store, Clock, Truck, MapPin, Phone, Mail, Save, Loader2, Search, ShieldCheck, Lock, Shield, Smartphone, Monitor, Tablet, Trash2, LogOut, Users, UserPlus, X, Calendar, Plus, Edit2, Check, AlertTriangle, Camera, Globe, Facebook, Instagram, Twitter } from "lucide-react"
 
 // Photon API for address autocomplete (same as Flutter app)
 const PHOTON_BASE_URL = 'https://photon.komoot.io'
@@ -80,6 +80,17 @@ interface ShopSettings {
   delivery_enabled: boolean
   delivery_radius_km: number
   delivery_fee: number
+  // New profile fields
+  logo_url: string
+  banner_url: string
+  website: string
+  facebook: string
+  instagram: string
+  twitter: string
+  specialties: string[]
+  payment_methods: string[]
+  registration_number: string
+  vat_number: string
 }
 
 const defaultWorkingHours = {
@@ -108,7 +119,24 @@ export default function SettingsPage() {
     delivery_enabled: true,
     delivery_radius_km: 20,
     delivery_fee: 50,
+    // New profile fields
+    logo_url: "",
+    banner_url: "",
+    website: "",
+    facebook: "",
+    instagram: "",
+    twitter: "",
+    specialties: [],
+    payment_methods: [],
+    registration_number: "",
+    vat_number: "",
   })
+  
+  // Image upload state
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState("profile")
@@ -606,6 +634,131 @@ export default function SettingsPage() {
     return date.toLocaleDateString()
   }
 
+  // Handle logo upload
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image must be less than 5MB')
+      return
+    }
+
+    setUploadingLogo(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `shop-logo-${settings.id}-${Date.now()}.${fileExt}`
+      const filePath = `shop-logos/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('shop-assets')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('shop-assets')
+        .getPublicUrl(filePath)
+
+      setSettings(prev => ({ ...prev, logo_url: publicUrl }))
+      
+      // Save to database
+      await supabase
+        .from('shops')
+        .update({ logo_url: publicUrl })
+        .eq('id', settings.id)
+
+    } catch (error) {
+      console.error('Logo upload error:', error)
+      alert('Failed to upload logo. Please try again.')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  // Handle banner upload
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file')
+      return
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Image must be less than 10MB')
+      return
+    }
+
+    setUploadingBanner(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `shop-banner-${settings.id}-${Date.now()}.${fileExt}`
+      const filePath = `shop-banners/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('shop-assets')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('shop-assets')
+        .getPublicUrl(filePath)
+
+      setSettings(prev => ({ ...prev, banner_url: publicUrl }))
+      
+      // Save to database
+      await supabase
+        .from('shops')
+        .update({ banner_url: publicUrl })
+        .eq('id', settings.id)
+
+    } catch (error) {
+      console.error('Banner upload error:', error)
+      alert('Failed to upload banner. Please try again.')
+    } finally {
+      setUploadingBanner(false)
+    }
+  }
+
+  // Specialty options
+  const SPECIALTY_OPTIONS = [
+    'Engine Repairs', 'Brake Systems', 'Transmission', 'Electrical',
+    'Suspension', 'Body Work', 'Air Conditioning', 'Diagnostics',
+    'German Cars', 'Japanese Cars', 'American Cars', 'Luxury Vehicles',
+    'Commercial Vehicles', 'Diesel Specialists', '4x4 Specialists'
+  ]
+
+  // Payment method options
+  const PAYMENT_OPTIONS = [
+    'Cash', 'Card', 'EFT', 'SnapScan', 'Zapper', 'PayFast', 'Account'
+  ]
+
+  const toggleSpecialty = (specialty: string) => {
+    setSettings(prev => ({
+      ...prev,
+      specialties: prev.specialties.includes(specialty)
+        ? prev.specialties.filter(s => s !== specialty)
+        : [...prev.specialties, specialty]
+    }))
+  }
+
+  const togglePaymentMethod = (method: string) => {
+    setSettings(prev => ({
+      ...prev,
+      payment_methods: prev.payment_methods.includes(method)
+        ? prev.payment_methods.filter(m => m !== method)
+        : [...prev.payment_methods, method]
+    }))
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -634,7 +787,92 @@ export default function SettingsPage() {
 
       {/* Profile Tab */}
       {activeTab === "profile" && (
-        <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6 space-y-6">
+        <div className="space-y-6">
+          {/* Shop Logo & Banner Section */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Camera className="w-5 h-5 text-accent" />
+              Shop Branding
+            </h3>
+            
+            {/* Banner Upload */}
+            <div className="mb-6">
+              <label className="block text-sm text-gray-400 mb-2">Cover Banner</label>
+              <div 
+                className="relative h-40 bg-[#2d2d2d] rounded-xl border-2 border-dashed border-gray-700 hover:border-accent transition-colors cursor-pointer overflow-hidden"
+                onClick={() => bannerInputRef.current?.click()}
+              >
+                {settings.banner_url ? (
+                  <img src={settings.banner_url} alt="Shop Banner" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <Camera className="w-8 h-8 text-gray-500 mb-2" />
+                    <p className="text-gray-500 text-sm">Click to upload banner (1200x400 recommended)</p>
+                  </div>
+                )}
+                {uploadingBanner && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-accent animate-spin" />
+                  </div>
+                )}
+              </div>
+              <input
+                ref={bannerInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleBannerUpload}
+                className="hidden"
+              />
+            </div>
+
+            {/* Logo Upload */}
+            <div className="flex items-start gap-6">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Shop Logo</label>
+                <div 
+                  className="relative w-32 h-32 bg-[#2d2d2d] rounded-xl border-2 border-dashed border-gray-700 hover:border-accent transition-colors cursor-pointer overflow-hidden"
+                  onClick={() => logoInputRef.current?.click()}
+                >
+                  {settings.logo_url ? (
+                    <img src={settings.logo_url} alt="Shop Logo" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <Store className="w-8 h-8 text-gray-500 mb-1" />
+                      <p className="text-gray-500 text-xs text-center px-2">Upload Logo</p>
+                    </div>
+                  )}
+                  {uploadingLogo && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-accent animate-spin" />
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <p className="text-xs text-gray-500 mt-2">Square image, max 5MB</p>
+              </div>
+              <div className="flex-1">
+                <p className="text-gray-400 text-sm mb-3">Your shop logo appears on quotes, invoices, and your public profile.</p>
+                <div className="p-3 bg-accent/10 border border-accent/30 rounded-lg">
+                  <p className="text-accent text-sm font-medium">Tip: Use a high-quality logo</p>
+                  <p className="text-gray-400 text-xs mt-1">A professional logo helps build trust with mechanics.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Basic Info Section */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6 space-y-6">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Store className="w-5 h-5 text-accent" />
+              Basic Information
+            </h3>
+            
           <div>
             <label className="block text-sm text-gray-400 mb-2">Shop Name</label>
             <input
@@ -790,6 +1028,149 @@ export default function SettingsPage() {
               placeholder="Tell customers about your shop..."
               className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none resize-none"
             />
+          </div>
+          </div>
+
+          {/* Social Media & Website Section */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-accent" />
+              Online Presence
+            </h3>
+            
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Website</label>
+              <div className="relative">
+                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <input
+                  type="url"
+                  value={settings.website || ""}
+                  onChange={(e) => setSettings({ ...settings, website: e.target.value })}
+                  placeholder="https://www.yourshop.co.za"
+                  className="w-full bg-[#2d2d2d] text-white pl-11 pr-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Facebook</label>
+                <div className="relative">
+                  <Facebook className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" />
+                  <input
+                    type="text"
+                    value={settings.facebook || ""}
+                    onChange={(e) => setSettings({ ...settings, facebook: e.target.value })}
+                    placeholder="facebook.com/yourshop"
+                    className="w-full bg-[#2d2d2d] text-white pl-11 pr-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Instagram</label>
+                <div className="relative">
+                  <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-pink-500" />
+                  <input
+                    type="text"
+                    value={settings.instagram || ""}
+                    onChange={(e) => setSettings({ ...settings, instagram: e.target.value })}
+                    placeholder="@yourshop"
+                    className="w-full bg-[#2d2d2d] text-white pl-11 pr-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Twitter / X</label>
+                <div className="relative">
+                  <Twitter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-sky-500" />
+                  <input
+                    type="text"
+                    value={settings.twitter || ""}
+                    onChange={(e) => setSettings({ ...settings, twitter: e.target.value })}
+                    placeholder="@yourshop"
+                    className="w-full bg-[#2d2d2d] text-white pl-11 pr-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Specialties Section */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">Shop Specialties</h3>
+            <p className="text-gray-400 text-sm mb-4">Select the services and vehicle types you specialize in</p>
+            <div className="flex flex-wrap gap-2">
+              {SPECIALTY_OPTIONS.map((specialty) => (
+                <button
+                  key={specialty}
+                  onClick={() => toggleSpecialty(specialty)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    settings.specialties.includes(specialty)
+                      ? 'bg-accent text-white'
+                      : 'bg-[#2d2d2d] text-gray-400 hover:text-white hover:bg-[#3d3d3d]'
+                  }`}
+                >
+                  {specialty}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Payment Methods Section */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">Accepted Payment Methods</h3>
+            <p className="text-gray-400 text-sm mb-4">Let customers know how they can pay</p>
+            <div className="flex flex-wrap gap-2">
+              {PAYMENT_OPTIONS.map((method) => (
+                <button
+                  key={method}
+                  onClick={() => togglePaymentMethod(method)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    settings.payment_methods.includes(method)
+                      ? 'bg-green-500 text-white'
+                      : 'bg-[#2d2d2d] text-gray-400 hover:text-white hover:bg-[#3d3d3d]'
+                  }`}
+                >
+                  {method}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Business Registration Section */}
+          <div className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-accent" />
+              Business Registration
+            </h3>
+            <p className="text-gray-400 text-sm mb-4">Optional: Add your business registration details for professional invoices</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Company Registration Number</label>
+                <input
+                  type="text"
+                  value={settings.registration_number || ""}
+                  onChange={(e) => setSettings({ ...settings, registration_number: e.target.value })}
+                  placeholder="e.g., 2024/123456/07"
+                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">VAT Number</label>
+                <input
+                  type="text"
+                  value={settings.vat_number || ""}
+                  onChange={(e) => setSettings({ ...settings, vat_number: e.target.value })}
+                  placeholder="e.g., 4123456789"
+                  className="w-full bg-[#2d2d2d] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-accent focus:outline-none"
+                />
+              </div>
+            </div>
+            
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <p className="text-blue-400 text-sm">These details will appear on your invoices and quotes for tax purposes.</p>
+            </div>
           </div>
         </div>
       )}
