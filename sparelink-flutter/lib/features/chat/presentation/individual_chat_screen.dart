@@ -39,12 +39,12 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
   
-  // Design constants
-  static const Color _backgroundColor = Color(0xFF121212);
-  static const Color _cardBackground = Color(0xFF1E1E1E);
-  static const Color _userMessageBackground = Color(0xFF333333);
-  static const Color _subtitleGray = Color(0xFFB0B0B0);
-  static const Color _timestampGray = Color(0xFF808080);
+  // Design constants - UX-01 FIX: Use AppTheme colors for consistency
+  static const Color _backgroundColor = Color(0xFF000000);  // AppTheme.primaryBlack
+  static const Color _cardBackground = Color(0xFF1A1A1A);   // AppTheme.darkGray
+  static const Color _userMessageBackground = Color(0xFF2A2A2A); // AppTheme.mediumGray
+  static const Color _subtitleGray = Color(0xFF888888);     // AppTheme.lightGray
+  static const Color _timestampGray = Color(0xFF666666);    // AppTheme.textHint
 
   // Real messages from Supabase
   List<Map<String, dynamic>> _messages = [];

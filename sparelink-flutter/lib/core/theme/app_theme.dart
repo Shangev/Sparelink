@@ -3,18 +3,59 @@ import 'package:google_fonts/google_fonts.dart';
 
 /// SpareLink Dark Theme with Glassmorphism
 /// Design System: Black base with green accents
+/// 
+/// UX-01 FIX: Centralized color constants for consistency
+/// All screens should use these colors instead of hardcoded values
 class AppTheme {
-  // Colors
-  static const Color primaryBlack = Color(0xFF000000);
-  static const Color darkGray = Color(0xFF1A1A1A);
-  static const Color mediumGray = Color(0xFF2A2A2A);
-  static const Color lightGray = Color(0xFF888888);
-  static const Color accentGreen = Color(0xFF4CAF50);
-  static const Color white = Color(0xFFFFFFFF);
+  // ==========================================================================
+  // PRIMARY COLORS (Use these everywhere)
+  // ==========================================================================
+  static const Color primaryBlack = Color(0xFF000000);    // Scaffold backgrounds
+  static const Color darkGray = Color(0xFF1A1A1A);        // Card backgrounds
+  static const Color mediumGray = Color(0xFF2A2A2A);      // Input fields, badges
+  static const Color lightGray = Color(0xFF888888);       // Subtitles, hints
+  static const Color accentGreen = Color(0xFF4CAF50);     // Primary actions, CTAs
+  static const Color white = Color(0xFFFFFFFF);           // Primary text
   
-  // Glassmorphism colors
-  static const Color glassLight = Color(0x1FFFFFFF); // rgba(255,255,255,0.12)
-  static const Color glassBorder = Color(0x33FFFFFF); // rgba(255,255,255,0.2)
+  // ==========================================================================
+  // SEMANTIC COLORS
+  // ==========================================================================
+  static const Color success = Color(0xFF4CAF50);         // Success states
+  static const Color warning = Color(0xFFFFA726);         // Warnings
+  static const Color error = Color(0xFFEF5350);           // Errors
+  static const Color info = Color(0xFF42A5F5);            // Information
+  
+  // ==========================================================================
+  // SURFACE COLORS (for cards, dialogs, etc.)
+  // ==========================================================================
+  static const Color surface = Color(0xFF1A1A1A);         // Same as darkGray
+  static const Color surfaceVariant = Color(0xFF2A2A2A);  // Same as mediumGray
+  static const Color surfaceElevated = Color(0xFF252525); // Slightly lighter
+  
+  // ==========================================================================
+  // TEXT COLORS
+  // ==========================================================================
+  static const Color textPrimary = Color(0xFFFFFFFF);     // Primary text
+  static const Color textSecondary = Color(0xFF888888);   // Secondary text
+  static const Color textHint = Color(0xFF666666);        // Hints, placeholders (UX-03 FIX: better contrast)
+  static const Color textDisabled = Color(0xFF555555);    // Disabled text
+  
+  // ==========================================================================
+  // GLASSMORPHISM COLORS
+  // ==========================================================================
+  static const Color glassLight = Color(0x1FFFFFFF);      // rgba(255,255,255,0.12)
+  static const Color glassBorder = Color(0x33FFFFFF);     // rgba(255,255,255,0.2)
+  
+  // ==========================================================================
+  // LEGACY COLOR MAPPINGS (for backward compatibility)
+  // These map old hardcoded values to the correct theme colors
+  // ==========================================================================
+  /// @deprecated Use primaryBlack instead
+  static const Color backgroundColor = primaryBlack;
+  /// @deprecated Use darkGray instead  
+  static const Color cardBackground = darkGray;
+  /// @deprecated Use lightGray instead
+  static const Color subtitleGray = lightGray;
   
   static ThemeData get darkTheme {
     return ThemeData(

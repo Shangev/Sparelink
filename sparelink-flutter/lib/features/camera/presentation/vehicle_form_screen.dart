@@ -41,10 +41,11 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
   bool _isSubmitting = false;
 
   // Design constants
-  static const Color _backgroundColor = Color(0xFF121212);
-  static const Color _cardBackground = Color(0xFF1E1E1E);
-  static const Color _inputBackground = Color(0xFF2A2A2A);
-  static const Color _subtitleGray = Color(0xFFB0B0B0);
+  // UX-01 FIX: Use AppTheme colors for consistency
+  static const Color _backgroundColor = Color(0xFF000000);  // AppTheme.primaryBlack
+  static const Color _cardBackground = Color(0xFF1A1A1A);   // AppTheme.darkGray
+  static const Color _inputBackground = Color(0xFF2A2A2A);  // AppTheme.mediumGray
+  static const Color _subtitleGray = Color(0xFF888888);     // AppTheme.lightGray
   
   @override
   void dispose() {
