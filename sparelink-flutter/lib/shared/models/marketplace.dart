@@ -323,12 +323,76 @@ class Offer {
 // ORDER MODEL
 // ============================================================================
 
+/// Unified Order Status Enum (CS-15 FIX)
+/// Synchronized across Flutter, Next.js Dashboard, and Supabase
+/// Maps to database values and provides display labels
 enum OrderStatus { 
-  confirmed, 
-  preparing, 
-  outForDelivery, 
-  delivered, 
-  cancelled 
+  pending,        // Dashboard initial status
+  confirmed,      // Flutter initial status  
+  preparing,      // Both use 'preparing'
+  processing,     // Dashboard alias for preparing
+  shipped,        // Dashboard uses 'shipped'
+  outForDelivery, // Flutter uses 'out_for_delivery'
+  delivered,      // Both use 'delivered'
+  cancelled       // Both use 'cancelled'
+}
+
+/// Extension to provide display labels, database values, and utilities
+extension OrderStatusExtension on OrderStatus {
+  /// Human-readable label for UI display
+  String get label {
+    switch (this) {
+      case OrderStatus.pending: return 'Pending';
+      case OrderStatus.confirmed: return 'Order Confirmed';
+      case OrderStatus.preparing: return 'Being Prepared';
+      case OrderStatus.processing: return 'Being Prepared';
+      case OrderStatus.shipped: return 'Shipped';
+      case OrderStatus.outForDelivery: return 'Out for Delivery';
+      case OrderStatus.delivered: return 'Delivered';
+      case OrderStatus.cancelled: return 'Cancelled';
+    }
+  }
+  
+  /// Value to send/receive from Supabase database
+  String get databaseValue {
+    switch (this) {
+      case OrderStatus.pending: return 'pending';
+      case OrderStatus.confirmed: return 'confirmed';
+      case OrderStatus.preparing: return 'preparing';
+      case OrderStatus.processing: return 'processing';
+      case OrderStatus.shipped: return 'shipped';
+      case OrderStatus.outForDelivery: return 'out_for_delivery';
+      case OrderStatus.delivered: return 'delivered';
+      case OrderStatus.cancelled: return 'cancelled';
+    }
+  }
+  
+  /// Progress percentage (0.0 - 1.0) for UI progress indicators
+  double get progress {
+    switch (this) {
+      case OrderStatus.pending: return 0.1;
+      case OrderStatus.confirmed: return 0.25;
+      case OrderStatus.preparing: return 0.4;
+      case OrderStatus.processing: return 0.4;
+      case OrderStatus.shipped: return 0.6;
+      case OrderStatus.outForDelivery: return 0.8;
+      case OrderStatus.delivered: return 1.0;
+      case OrderStatus.cancelled: return 0.0;
+    }
+  }
+  
+  /// Check if order is still active (not completed or cancelled)
+  bool get isActive {
+    return this != OrderStatus.delivered && this != OrderStatus.cancelled;
+  }
+  
+  /// Check if order can be cancelled
+  bool get canCancel {
+    return this == OrderStatus.pending || 
+           this == OrderStatus.confirmed || 
+           this == OrderStatus.preparing ||
+           this == OrderStatus.processing;
+  }
 }
 
 enum DeliveryDestination { user, mechanic }
@@ -402,27 +466,17 @@ class Order {
   /// Human-readable order ID
   String get displayId => 'SL-${id.substring(0, 8).toUpperCase()}';
 
-  /// Status progress (0.0 - 1.0)
-  double get statusProgress {
-    switch (status) {
-      case OrderStatus.confirmed: return 0.25;
-      case OrderStatus.preparing: return 0.5;
-      case OrderStatus.outForDelivery: return 0.75;
-      case OrderStatus.delivered: return 1.0;
-      case OrderStatus.cancelled: return 0.0;
-    }
-  }
+  /// Status progress (0.0 - 1.0) - uses unified extension
+  double get statusProgress => status.progress;
 
-  /// Human-readable status
-  String get statusLabel {
-    switch (status) {
-      case OrderStatus.confirmed: return 'Order Confirmed';
-      case OrderStatus.preparing: return 'Being Prepared';
-      case OrderStatus.outForDelivery: return 'Out for Delivery';
-      case OrderStatus.delivered: return 'Delivered';
-      case OrderStatus.cancelled: return 'Cancelled';
-    }
-  }
+  /// Human-readable status - uses unified extension
+  String get statusLabel => status.label;
+  
+  /// Check if order is still active
+  bool get isActive => status.isActive;
+  
+  /// Check if order can be cancelled
+  bool get canCancel => status.canCancel;
 
   factory Order.fromJson(Map<String, dynamic> json) {
     // Handle nested part_requests data for invoice
@@ -517,13 +571,43 @@ class Order {
     };
   }
 
+  /// Parse order status from Supabase/Dashboard string (CS-15 FIX)
+  /// Handles all variations from both Flutter and Dashboard
   static OrderStatus _parseOrderStatus(String? status) {
-    switch (status) {
-      case 'preparing': return OrderStatus.preparing;
-      case 'out_for_delivery': return OrderStatus.outForDelivery;
-      case 'delivered': return OrderStatus.delivered;
-      case 'cancelled': return OrderStatus.cancelled;
-      default: return OrderStatus.confirmed;
+    if (status == null || status.isEmpty) return OrderStatus.confirmed;
+    
+    switch (status.toLowerCase()) {
+      // Dashboard values
+      case 'pending':
+        return OrderStatus.pending;
+      case 'processing':
+        return OrderStatus.processing;
+      case 'shipped':
+        return OrderStatus.shipped;
+      
+      // Flutter values  
+      case 'confirmed':
+        return OrderStatus.confirmed;
+      case 'preparing':
+        return OrderStatus.preparing;
+      case 'out_for_delivery':
+      case 'outfordelivery':
+        return OrderStatus.outForDelivery;
+      
+      // Common values
+      case 'delivered':
+        return OrderStatus.delivered;
+      case 'cancelled':
+      case 'canceled':
+        return OrderStatus.cancelled;
+      
+      default:
+        // Log unknown status for debugging but don't crash
+        assert(() {
+          print('⚠️ Unknown order status: $status, defaulting to confirmed');
+          return true;
+        }());
+        return OrderStatus.confirmed;
     }
   }
 }

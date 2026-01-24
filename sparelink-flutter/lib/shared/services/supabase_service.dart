@@ -401,11 +401,16 @@ class SupabaseService {
   /// Accept an offer (and update request status)
   /// 
   /// This method:
-  /// 1. Updates offers.status to 'accepted'
+  /// 1. Updates offers.status to 'accepted' (triggers CS-17 validation)
   /// 2. Updates part_requests.status to 'accepted'  
   /// 3. Creates an order in the orders table
   /// 4. Rejects all other pending offers for this request
   /// 5. Sends notification to shop owner
+  /// 
+  /// CS-17 FIX: Now handles server-side quote expiry validation
+  /// Throws [QuoteExpiredException] if the quote has expired
+  /// Throws [QuoteAlreadyAcceptedException] if another user accepted first
+  /// Throws [QuoteRejectedException] if the quote was rejected
   Future<Map<String, dynamic>> acceptOffer({
     required String offerId,
     required String requestId,
@@ -417,84 +422,120 @@ class SupabaseService {
     debugPrint('offerId: $offerId');
     debugPrint('requestId: $requestId');
     
-    // Step 1: Update offer status to 'accepted' in the offers table
-    debugPrint('Step 1: Updating offer status to accepted...');
-    final offerUpdateResponse = await _client
-        .from(SupabaseConstants.offersTable)
-        .update({
-          'status': 'accepted',
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', offerId)
-        .select('*, shops(owner_id, name)');
-    
-    debugPrint('Offer update response: $offerUpdateResponse');
-    
-    if (offerUpdateResponse.isEmpty) {
-      debugPrint('ERROR: Offer update returned empty - possible RLS issue or offer not found');
-      throw Exception('Failed to update offer status - offer not found or permission denied. Check RLS policies on offers table.');
-    }
-    
-    final acceptedOffer = offerUpdateResponse.first;
-    debugPrint('Offer updated successfully. New status should be: ${acceptedOffer['status']}');
-    
-    // Step 2: Update request status
-    final requestUpdateResponse = await _client
-        .from(SupabaseConstants.partRequestsTable)
-        .update({'status': 'accepted'})
-        .eq('id', requestId)
-        .select();
-    
-    if (requestUpdateResponse.isEmpty) {
-      throw Exception('Failed to update request status - request not found');
-    }
-    
-    final request = requestUpdateResponse.first;
-    
-    // Step 3: Create the order
-    final order = await _client
-        .from(SupabaseConstants.ordersTable)
-        .insert({
-          'request_id': requestId,
-          'offer_id': offerId,
-          'total_cents': totalCents,
-          'status': 'confirmed',
-          'delivery_destination': deliveryDestination,
-          'delivery_address': deliveryAddress,
-        })
-        .select()
-        .single();
-    
-    // Step 4: Reject all other pending offers for this request
-    await _client
-        .from(SupabaseConstants.offersTable)
-        .update({'status': 'rejected'})
-        .eq('request_id', requestId)
-        .neq('id', offerId)
-        .eq('status', 'pending');
-    
-    // Step 5: Notify the shop owner that their offer was accepted
     try {
-      final shopData = acceptedOffer['shops'];
-      if (shopData != null && shopData['owner_id'] != null) {
-        final vehicleInfo = '${request['vehicle_year']} ${request['vehicle_make']} ${request['vehicle_model']}';
-        final totalRands = (totalCents / 100).toStringAsFixed(2);
-        
-        await _client.from('notifications').insert({
-          'user_id': shopData['owner_id'],
-          'type': 'offer_accepted',
-          'title': 'Quote Accepted! 🎉',
-          'body': 'Your quote of R$totalRands for $vehicleInfo has been accepted. Prepare the order for delivery.',
-          'reference_id': order['id'],
-        });
+      // Step 1: Update offer status to 'accepted' in the offers table
+      // The database trigger (validate_offer_acceptance) will check:
+      // - If quote is already accepted (race condition prevention)
+      // - If quote has expired (CS-17 fix)
+      // - If quote was rejected
+      debugPrint('Step 1: Updating offer status to accepted...');
+      final offerUpdateResponse = await _client
+          .from(SupabaseConstants.offersTable)
+          .update({
+            'status': 'accepted',
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', offerId)
+          .select('*, shops(owner_id, name)');
+      
+      debugPrint('Offer update response: $offerUpdateResponse');
+      
+      if (offerUpdateResponse.isEmpty) {
+        debugPrint('ERROR: Offer update returned empty - possible RLS issue or offer not found');
+        throw Exception('Failed to update offer status - offer not found or permission denied. Check RLS policies on offers table.');
       }
-    } catch (e) {
-      // Don't fail the order if notification fails
-      // Notification is non-critical, so we just log and continue
-      debugPrint('Warning: Failed to send acceptance notification: $e');
+      
+      final acceptedOffer = offerUpdateResponse.first;
+      debugPrint('Offer updated successfully. New status should be: ${acceptedOffer['status']}');
+      
+      // Step 2: Update request status
+      final requestUpdateResponse = await _client
+          .from(SupabaseConstants.partRequestsTable)
+          .update({'status': 'accepted'})
+          .eq('id', requestId)
+          .select();
+      
+      if (requestUpdateResponse.isEmpty) {
+        throw Exception('Failed to update request status - request not found');
+      }
+      
+      final request = requestUpdateResponse.first;
+      
+      // Step 3: Create the order
+      // The unique_offer_order constraint prevents duplicate orders for same offer
+      final order = await _client
+          .from(SupabaseConstants.ordersTable)
+          .insert({
+            'request_id': requestId,
+            'offer_id': offerId,
+            'total_cents': totalCents,
+            'status': 'confirmed',
+            'delivery_destination': deliveryDestination,
+            'delivery_address': deliveryAddress,
+          })
+          .select()
+          .single();
+      
+      // Step 4: Reject all other pending offers for this request
+      await _client
+          .from(SupabaseConstants.offersTable)
+          .update({'status': 'rejected'})
+          .eq('request_id', requestId)
+          .neq('id', offerId)
+          .eq('status', 'pending');
+      
+      // Step 5: Notify the shop owner that their offer was accepted
+      try {
+        final shopData = acceptedOffer['shops'];
+        if (shopData != null && shopData['owner_id'] != null) {
+          final vehicleInfo = '${request['vehicle_year']} ${request['vehicle_make']} ${request['vehicle_model']}';
+          final totalRands = (totalCents / 100).toStringAsFixed(2);
+          
+          await _client.from('notifications').insert({
+            'user_id': shopData['owner_id'],
+            'type': 'offer_accepted',
+            'title': 'Quote Accepted! 🎉',
+            'body': 'Your quote of R$totalRands for $vehicleInfo has been accepted. Prepare the order for delivery.',
+            'reference_id': order['id'],
+          });
+        }
+      } catch (e) {
+        // Don't fail the order if notification fails
+        // Notification is non-critical, so we just log and continue
+        debugPrint('Warning: Failed to send acceptance notification: $e');
+      }
+      
+      return order;
+      
+    } on PostgrestException catch (e) {
+      // CS-17 FIX: Handle specific database errors from our validation trigger
+      debugPrint('PostgrestException in acceptOffer: ${e.code} - ${e.message}');
+      
+      final message = e.message ?? '';
+      
+      // Check for our custom error messages from the trigger
+      if (message.contains('QUOTE_ALREADY_ACCEPTED') || e.code == 'P0001') {
+        throw QuoteAlreadyAcceptedException(
+          'This quote has already been accepted. Another user may have accepted it first.'
+        );
+      } else if (message.contains('QUOTE_EXPIRED') || e.code == 'P0002') {
+        throw QuoteExpiredException(
+          'This quote has expired. Please request a new quote from the shop.'
+        );
+      } else if (message.contains('QUOTE_REJECTED') || e.code == 'P0003') {
+        throw QuoteRejectedException(
+          'This quote has been rejected and cannot be accepted.'
+        );
+      } else if (e.code == '23505') {
+        // Unique constraint violation - another order already exists for this offer
+        throw QuoteAlreadyAcceptedException(
+          'An order has already been created for this quote.'
+        );
+      }
+      
+      // Re-throw other PostgrestExceptions
+      rethrow;
     }
-    
-    return order;
   }
   
   // ============================================
@@ -1094,4 +1135,35 @@ class SupabaseService {
       'data': {'offer_id': offerId},
     });
   }
+}
+
+// =============================================================================
+// CUSTOM EXCEPTIONS FOR QUOTE HANDLING (CS-17 FIX)
+// =============================================================================
+
+/// Exception thrown when trying to accept an expired quote
+class QuoteExpiredException implements Exception {
+  final String message;
+  QuoteExpiredException(this.message);
+  
+  @override
+  String toString() => 'QuoteExpiredException: $message';
+}
+
+/// Exception thrown when trying to accept a quote that was already accepted
+class QuoteAlreadyAcceptedException implements Exception {
+  final String message;
+  QuoteAlreadyAcceptedException(this.message);
+  
+  @override
+  String toString() => 'QuoteAlreadyAcceptedException: $message';
+}
+
+/// Exception thrown when trying to accept a rejected quote
+class QuoteRejectedException implements Exception {
+  final String message;
+  QuoteRejectedException(this.message);
+  
+  @override
+  String toString() => 'QuoteRejectedException: $message';
 }

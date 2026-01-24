@@ -4,9 +4,64 @@ import { useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { Package, Truck, CheckCircle, Clock, MapPin, User, Wrench, RefreshCw, Bell, Printer, Hash, UserCheck, CheckSquare, Square, X, Save, ChevronDown, FileText, AlertCircle, CreditCard, Receipt, DollarSign, ExternalLink } from "lucide-react"
 
+// =============================================================================
+// UNIFIED ORDER STATUS (CS-15 FIX)
+// Synchronized across Flutter, Next.js Dashboard, and Supabase
+// =============================================================================
+
+type OrderStatusType = 
+  | "pending"         // Dashboard initial
+  | "confirmed"       // Flutter initial
+  | "preparing"       // Both use
+  | "processing"      // Dashboard alias for preparing
+  | "shipped"         // Dashboard uses
+  | "out_for_delivery" // Flutter uses
+  | "delivered"       // Both use
+  | "cancelled";      // Both use
+
+// Status display labels (unified with Flutter)
+const STATUS_LABELS: Record<OrderStatusType, string> = {
+  "pending": "Pending",
+  "confirmed": "Order Confirmed",
+  "preparing": "Being Prepared",
+  "processing": "Being Prepared",
+  "shipped": "Shipped",
+  "out_for_delivery": "Out for Delivery",
+  "delivered": "Delivered",
+  "cancelled": "Cancelled"
+};
+
+// Valid status transitions (for future state machine validation)
+const VALID_TRANSITIONS: Record<OrderStatusType, OrderStatusType[]> = {
+  "pending": ["confirmed", "cancelled"],
+  "confirmed": ["preparing", "cancelled"],
+  "preparing": ["processing", "shipped", "cancelled"],
+  "processing": ["shipped", "cancelled"],
+  "shipped": ["out_for_delivery", "delivered"],
+  "out_for_delivery": ["delivered"],
+  "delivered": [],
+  "cancelled": []
+};
+
+// Get display label for status
+const getStatusLabel = (status: string): string => {
+  return STATUS_LABELS[status as OrderStatusType] || status;
+};
+
+// Check if status transition is valid
+const canTransitionTo = (currentStatus: string, newStatus: string): boolean => {
+  const allowed = VALID_TRANSITIONS[currentStatus as OrderStatusType] || [];
+  return allowed.includes(newStatus as OrderStatusType);
+};
+
+// Get available next statuses for an order
+const getAvailableStatuses = (currentStatus: string): OrderStatusType[] => {
+  return VALID_TRANSITIONS[currentStatus as OrderStatusType] || [];
+};
+
 interface Order {
   id: string
-  status: string
+  status: OrderStatusType
   total_cents: number
   total_amount?: number // legacy field
   created_at: string
@@ -462,16 +517,22 @@ export default function OrdersPage() {
     }
   }
 
+  // Get status icon based on unified status (CS-15 FIX)
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "delivered": return <CheckCircle className="w-5 h-5 text-green-400" />
-      case "shipped": return <Truck className="w-5 h-5 text-blue-400" />
-      case "processing": return <Package className="w-5 h-5 text-yellow-400" />
+      case "shipped": 
+      case "out_for_delivery": return <Truck className="w-5 h-5 text-blue-400" />
+      case "processing":
+      case "preparing": return <Package className="w-5 h-5 text-yellow-400" />
+      case "confirmed": return <CheckCircle className="w-5 h-5 text-accent" />
+      case "cancelled": return <X className="w-5 h-5 text-red-400" />
       default: return <Clock className="w-5 h-5 text-gray-400" />
     }
   }
 
-  const statusOptions = ["pending", "processing", "shipped", "delivered"]
+  // Unified status options (CS-15 FIX) - synced with Flutter OrderStatus enum
+  const statusOptions: OrderStatusType[] = ["confirmed", "preparing", "shipped", "out_for_delivery", "delivered"]
   const filteredOrders = filter === "all" ? orders : orders.filter(o => o.status === filter)
 
   if (loading) {
@@ -731,19 +792,19 @@ export default function OrdersPage() {
                   {getPaymentBadge(order.payment_status)}
                 </div>
 
-                {/* Status Buttons */}
+                {/* Status Buttons (CS-15 FIX) - Show available transitions */}
                 <div className="flex gap-2 flex-wrap">
                   {statusOptions.map((status) => (
                     <button
                       key={status}
                       onClick={() => updateOrderStatus(order.id, status)}
-                      className={`px-3 py-1.5 rounded-lg text-sm capitalize transition-colors ${
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
                         order.status === status
                           ? "bg-accent text-white"
                           : "bg-[#2d2d2d] text-gray-400 hover:text-white"
                       }`}
                     >
-                      {status}
+                      {getStatusLabel(status)}
                     </button>
                   ))}
                 </div>

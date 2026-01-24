@@ -196,7 +196,15 @@ class PaymentService {
     }
   }
 
-  /// Verify payment with Paystack
+  /// Verify payment with Paystack (CS-18 FIX)
+  /// 
+  /// CRITICAL: This method NEVER assumes success on verification failure.
+  /// Only returns success: true if Paystack explicitly confirms the payment.
+  /// 
+  /// Returns [PaymentResult] with:
+  /// - success: true ONLY if Paystack returns status: 'success'
+  /// - success: false for all other cases (failed, pending, abandoned, errors)
+  /// - requiresManualCheck: true if verification failed but money may have been deducted
   Future<PaymentResult> _verifyPayment(String reference) async {
     try {
       final response = await _supabase.functions.invoke(
@@ -206,29 +214,74 @@ class PaymentService {
 
       if (response.status == 200) {
         final data = response.data;
-        if (data['status'] == true && data['data']['status'] == 'success') {
-          return PaymentResult(
-            success: true,
-            reference: reference,
-            message: 'Payment verified',
-            authorizationCode: data['data']?['authorization']?['authorization_code'],
-            cardLast4: data['data']?['authorization']?['last4'],
-            cardBrand: data['data']?['authorization']?['brand'],
-          );
+        
+        // Check Paystack response structure
+        if (data['status'] == true && data['data'] != null) {
+          final paymentData = data['data'];
+          final paymentStatus = paymentData['status'];
+          
+          // CS-18 FIX: Only return success for explicit 'success' status
+          if (paymentStatus == 'success') {
+            return PaymentResult(
+              success: true,
+              reference: reference,
+              message: 'Payment verified successfully',
+              authorizationCode: paymentData['authorization']?['authorization_code'],
+              cardLast4: paymentData['authorization']?['last4'],
+              cardBrand: paymentData['authorization']?['brand'],
+            );
+          } else if (paymentStatus == 'failed') {
+            // Payment explicitly failed - get the reason
+            final gatewayResponse = paymentData['gateway_response'] ?? 'Payment declined';
+            return PaymentResult(
+              success: false,
+              reference: reference,
+              message: 'Payment failed: $gatewayResponse',
+              gatewayResponse: gatewayResponse,
+            );
+          } else if (paymentStatus == 'abandoned') {
+            return PaymentResult(
+              success: false,
+              reference: reference,
+              message: 'Payment was abandoned. Please try again.',
+            );
+          } else if (paymentStatus == 'pending') {
+            return PaymentResult(
+              success: false,
+              reference: reference,
+              message: 'Payment is still processing. Please wait.',
+              requiresManualCheck: true,
+            );
+          } else {
+            // Unknown status - treat as failed, not success
+            debugPrint('⚠️ Unknown payment status: $paymentStatus');
+            return PaymentResult(
+              success: false,
+              reference: reference,
+              message: 'Payment status unknown: $paymentStatus. Please contact support.',
+              requiresManualCheck: true,
+            );
+          }
         }
       }
 
+      // API returned non-200 or unexpected format
       return PaymentResult(
         success: false,
         reference: reference,
-        message: 'Payment verification failed',
+        message: 'Payment verification failed. Please contact support if money was deducted.',
+        requiresManualCheck: true,
       );
     } catch (e) {
-      // If verification fails, assume success from callback
+      // CS-18 FIX: NEVER assume success on verification failure!
+      // The payment may have failed, we MUST tell the user to check.
+      debugPrint('⚠️ Payment verification error: $e');
+      
       return PaymentResult(
-        success: true,
+        success: false,
         reference: reference,
-        message: 'Payment completed',
+        message: 'Unable to verify payment. Please check your bank statement and contact support if needed.',
+        requiresManualCheck: true,
       );
     }
   }

@@ -1,0 +1,17 @@
+ I found the issue! The Supabase credentials are not configured - they still have placeholder values:
+
+
+ static const String supabaseUrl = 'YOUR_SUPABASE_URL';
+ static const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+
+
+The app is failing to initialize because Supabase can't connect with invalid credentials.
+
+You need to add your Supabase credentials. You can find them in your Supabase Dashboard → Settings → API.
+
+Would you like me to update the file with your credentials? Please provide:
+
+ 1 Supabase URL (looks like: https://xxxxxxxxxxxxx.supabase.co)
+ 2 Supabase Anon Key (a long JWT token starting with eyJ...)
+
+Or if you'd prefer, you can share your Supabase project URL and I can guide you where to find the keys

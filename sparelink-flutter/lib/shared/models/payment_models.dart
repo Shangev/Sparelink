@@ -2,10 +2,14 @@
 /// Handles payment processing, saved cards, refunds, and transaction history
 
 // ============================================================================
-// PAYMENT RESULT
+// PAYMENT RESULT (CS-18 FIX: Added gatewayResponse and requiresManualCheck)
 // ============================================================================
 
 /// Result from a payment attempt
+/// 
+/// CS-18 FIX: Added fields for proper error handling:
+/// - [gatewayResponse]: The raw response from Paystack explaining why payment failed
+/// - [requiresManualCheck]: True if verification failed but money may have been deducted
 class PaymentResult {
   final bool success;
   final String reference;
@@ -14,6 +18,8 @@ class PaymentResult {
   final String? cardLast4;
   final String? cardBrand;
   final String? transactionId;
+  final String? gatewayResponse;      // CS-18: Paystack gateway response (e.g., "Insufficient funds")
+  final bool requiresManualCheck;     // CS-18: True if user should check bank statement
 
   PaymentResult({
     required this.success,
@@ -23,7 +29,31 @@ class PaymentResult {
     this.cardLast4,
     this.cardBrand,
     this.transactionId,
+    this.gatewayResponse,
+    this.requiresManualCheck = false,
   });
+
+  /// Check if payment needs manual verification/support contact
+  bool get needsSupport => requiresManualCheck || (!success && gatewayResponse == null);
+  
+  /// User-friendly error message for display
+  String get userMessage {
+    if (success) return 'Payment successful!';
+    if (gatewayResponse != null && gatewayResponse!.isNotEmpty) {
+      return gatewayResponse!;
+    }
+    if (requiresManualCheck) {
+      return 'We couldn\'t verify your payment. Please check your bank statement and contact support if money was deducted.';
+    }
+    return message;
+  }
+  
+  /// Get display-friendly status
+  String get statusLabel {
+    if (success) return 'Successful';
+    if (requiresManualCheck) return 'Verification Required';
+    return 'Failed';
+  }
 
   factory PaymentResult.fromJson(Map<String, dynamic> json) {
     return PaymentResult(
@@ -34,6 +64,8 @@ class PaymentResult {
       cardLast4: json['card_last4'],
       cardBrand: json['card_brand'],
       transactionId: json['transaction_id'],
+      gatewayResponse: json['gateway_response'],
+      requiresManualCheck: json['requires_manual_check'] ?? false,
     );
   }
 
@@ -46,6 +78,8 @@ class PaymentResult {
       'card_last4': cardLast4,
       'card_brand': cardBrand,
       'transaction_id': transactionId,
+      'gateway_response': gatewayResponse,
+      'requires_manual_check': requiresManualCheck,
     };
   }
 }
