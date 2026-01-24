@@ -3315,3 +3315,69 @@ Found **43 console.log statements** across Dashboard files. These are acceptable
 > - CS-18: Payment verification logic ✅
 > - CS-19: Payment error display ✅
 > - CS-20: Dead fields analysis (KEEP) ✅
+
+---
+
+## 31.10 SQL MIGRATION DEPLOYMENT CHECKLIST
+
+> **⚠️ IMPORTANT:** Always use the SQL files from the repository, NOT chat-pasted snippets.
+> Chat-pasted SQL may have encoding issues or truncation causing `42601: unterminated dollar-quoted string` errors.
+
+### 31.10.1 Pre-Deployment Validation
+
+Before running any SQL migration in Supabase:
+
+1. **Use Repository Files:** Open `CS17_quote_expiry_validation.sql` or `CS16_order_status_transition_validation.sql` directly from the repository
+2. **Verify Block Integrity:** Every `DO $$` block MUST end with `END $$;`
+3. **Check Function Closures:** Every `CREATE FUNCTION ... AS $$` MUST end with `END; $$ LANGUAGE plpgsql;`
+
+### 31.10.2 Deployment Order
+
+Execute in Supabase SQL Editor in this order:
+
+| Step | File | Purpose | Status |
+|------|------|---------|--------|
+| 1 | `CS17_quote_expiry_validation.sql` | Quote expiry validation trigger | ⏳ Pending |
+| 2 | `CS16_order_status_transition_validation.sql` | Order status state machine | ⏳ Pending |
+
+### 31.10.3 Syntax Validation Checklist
+
+For `CS17_quote_expiry_validation.sql`:
+- [x] Line 7-16: `DO $$ ... END $$;` ✓
+- [x] Line 23-60: `CREATE FUNCTION ... END; $$ LANGUAGE plpgsql;` ✓
+- [x] Line 71-82: `DO $$ ... END $$;` ✓
+- [x] Line 85-92: `DO $$ ... END $$;` ✓
+- [x] Line 95-108: `DO $$ ... END $$;` ✓
+
+For `CS16_order_status_transition_validation.sql`:
+- [x] Line 7-60: `CREATE FUNCTION ... END; $$ LANGUAGE plpgsql;` ✓
+- [x] Line 70-76: `DO $$ ... END $$;` ✓
+- [x] Line 83-96: `DO $$ ... END $$;` ✓
+
+### 31.10.4 Post-Deployment Verification
+
+Run these queries to verify successful deployment:
+
+```sql
+-- Verify CS-17 trigger exists
+SELECT tgname FROM pg_trigger WHERE tgname = 'trigger_validate_offer_acceptance';
+
+-- Verify CS-16 trigger exists
+SELECT tgname FROM pg_trigger WHERE tgname = 'trigger_validate_order_status';
+
+-- Verify unique constraint exists
+SELECT conname FROM pg_constraint WHERE conname = 'unique_offer_order';
+
+-- Verify expires_at column exists
+SELECT column_name FROM information_schema.columns 
+WHERE table_name = 'offers' AND column_name = 'expires_at';
+```
+
+### 31.10.5 Troubleshooting
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `42601: unterminated dollar-quoted string` | Missing `END $$;` or truncated SQL | Use file from repository, not chat paste |
+| `42703: column does not exist` | Missing column | Run column creation DO block first |
+| `42P07: relation already exists` | Index/constraint exists | Safe to ignore (uses IF NOT EXISTS) |
+| `42883: function does not exist` | Function not created | Check CREATE FUNCTION syntax |
