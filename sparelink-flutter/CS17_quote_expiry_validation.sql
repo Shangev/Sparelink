@@ -4,6 +4,22 @@
 -- Run this migration in Supabase SQL Editor
 -- =====================================================
 
+-- STEP 0: Add expires_at column to offers table if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'offers' AND column_name = 'expires_at') THEN
+        ALTER TABLE public.offers ADD COLUMN expires_at TIMESTAMPTZ;
+        RAISE NOTICE 'Added expires_at column to offers table';
+    ELSE
+        RAISE NOTICE 'expires_at column already exists in offers table';
+    END IF;
+END $$;
+
+-- Set default expiry to 48 hours from creation for new offers (optional)
+-- Uncomment if you want auto-expiry:
+-- ALTER TABLE public.offers ALTER COLUMN expires_at SET DEFAULT (NOW() + INTERVAL '48 hours');
+
 -- Function to validate offer before acceptance
 CREATE OR REPLACE FUNCTION validate_offer_acceptance()
 RETURNS TRIGGER AS $$
@@ -66,8 +82,15 @@ EXCEPTION
     NULL;
 END $$;
 
--- Add index for faster expiry checks
-CREATE INDEX IF NOT EXISTS idx_offers_expires_at ON offers(expires_at) WHERE expires_at IS NOT NULL;
+-- Add index for faster expiry checks (only if column exists)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns 
+               WHERE table_name = 'offers' AND column_name = 'expires_at') THEN
+        CREATE INDEX IF NOT EXISTS idx_offers_expires_at ON public.offers(expires_at) WHERE expires_at IS NOT NULL;
+        RAISE NOTICE 'Created index idx_offers_expires_at';
+    END IF;
+END $$;
 
 -- Log the migration
 DO $$
