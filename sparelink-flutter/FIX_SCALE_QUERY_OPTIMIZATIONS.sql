@@ -30,7 +30,6 @@ SELECT
     pr.budget_min,
     pr.budget_max,
     pr.urgency,
-    pr.part_number,
     -- Computed counts (these override any existing columns)
     COALESCE(offer_counts.count, 0)::INTEGER as offer_count,
     COALESCE(chat_counts.total, 0)::INTEGER as shop_count,
