@@ -256,7 +256,80 @@ class SupabaseService {
   }
   
   /// Get all requests for a mechanic (with offer counts and shop counts)
+  /// 
+  /// OPTIMIZED (Pass 2 Phase 2): Uses database view to eliminate N+1 queries
+  /// Previous: 2N+1 queries (201 queries for 100 requests)
+  /// Now: 1 query using part_requests_with_counts view
+  /// Fallback: Uses RPC function if view not available
+  /// Legacy fallback: Original N+1 pattern if neither available
   Future<List<Map<String, dynamic>>> getMechanicRequests(String mechanicId) async {
+    // OPTIMIZATION: Try using the pre-computed view first (1 query instead of 2N+1)
+    try {
+      final response = await _client
+          .from('part_requests_with_counts')  // Optimized view
+          .select()
+          .eq('mechanic_id', mechanicId)
+          .order('created_at', ascending: false);
+      
+      final requests = List<Map<String, dynamic>>.from(response);
+      
+      // Update status to 'offered' if there are offers/quotes and status is still pending
+      for (var request in requests) {
+        final offerCount = request['offer_count'] ?? 0;
+        final quotedCount = request['quoted_count'] ?? 0;
+        
+        if ((offerCount > 0 || quotedCount > 0) && request['status'] == 'pending') {
+          request['status'] = 'offered';
+          if (offerCount == 0 && quotedCount > 0) {
+            request['offer_count'] = quotedCount;
+          }
+        }
+      }
+      
+      debugPrint('✅ [getMechanicRequests] Used optimized view - 1 query for ${requests.length} requests');
+      return requests;
+      
+    } catch (viewError) {
+      debugPrint('⚠️ [getMechanicRequests] View not available, trying RPC function...');
+      
+      // FALLBACK 1: Try using the RPC function
+      try {
+        final response = await _client.rpc(
+          'get_mechanic_requests_with_counts',
+          params: {'p_mechanic_id': mechanicId},
+        );
+        
+        final requests = List<Map<String, dynamic>>.from(response);
+        
+        // Update status to 'offered' if there are offers/quotes
+        for (var request in requests) {
+          final offerCount = request['offer_count'] ?? 0;
+          final quotedCount = request['quoted_count'] ?? 0;
+          
+          if ((offerCount > 0 || quotedCount > 0) && request['status'] == 'pending') {
+            request['status'] = 'offered';
+            if (offerCount == 0 && quotedCount > 0) {
+              request['offer_count'] = quotedCount;
+            }
+          }
+        }
+        
+        debugPrint('✅ [getMechanicRequests] Used RPC function - 1 query for ${requests.length} requests');
+        return requests;
+        
+      } catch (rpcError) {
+        debugPrint('⚠️ [getMechanicRequests] RPC not available, using legacy N+1 pattern...');
+        
+        // FALLBACK 2: Legacy N+1 pattern (for backward compatibility)
+        return _getMechanicRequestsLegacy(mechanicId);
+      }
+    }
+  }
+  
+  /// Legacy N+1 query pattern for getMechanicRequests
+  /// Used as fallback when optimized view/function not deployed
+  /// TODO: Remove once all environments have the optimized view
+  Future<List<Map<String, dynamic>>> _getMechanicRequestsLegacy(String mechanicId) async {
     final response = await _client
         .from(SupabaseConstants.partRequestsTable)
         .select()
@@ -265,7 +338,7 @@ class SupabaseService {
     
     final requests = List<Map<String, dynamic>>.from(response);
     
-    // Fetch offer counts and shop counts for each request
+    // Fetch offer counts and shop counts for each request (N+1 pattern)
     for (var request in requests) {
       // Get offer count from offers table
       final offersResponse = await _client
@@ -276,7 +349,7 @@ class SupabaseService {
       final offerCount = (offersResponse as List).length;
       request['offer_count'] = offerCount;
       
-      // Get shop count from request_chats table (how many shops received this request)
+      // Get shop count from request_chats table
       final chatsResponse = await _client
           .from('request_chats')
           .select('id, status')
@@ -285,19 +358,19 @@ class SupabaseService {
       final shopCount = (chatsResponse as List).length;
       final quotedCount = chatsResponse.where((c) => c['status'] == 'quoted').length;
       
-      request['shop_count'] = shopCount;  // Total shops that received the request
-      request['quoted_count'] = quotedCount;  // Shops that have sent quotes
+      request['shop_count'] = shopCount;
+      request['quoted_count'] = quotedCount;
       
       // Update status to 'offered' if there are offers/quotes and status is still pending
       if ((offerCount > 0 || quotedCount > 0) && request['status'] == 'pending') {
         request['status'] = 'offered';
-        // Use quoted_count as offer_count if offers table is empty but quotes exist
         if (offerCount == 0 && quotedCount > 0) {
           request['offer_count'] = quotedCount;
         }
       }
     }
     
+    debugPrint('⚠️ [getMechanicRequests] Used legacy N+1 pattern - ${requests.length * 2 + 1} queries');
     return requests;
   }
   
@@ -729,10 +802,114 @@ class SupabaseService {
     return response;
   }
   
+  /// Get unread counts for multiple chats in a single batch query
+  /// 
+  /// OPTIMIZED (Pass 2 Phase 2): Reduces N queries to 1 query
+  /// Use this instead of calling getUnreadCountForChat() in a loop
+  Future<Map<String, int>> getUnreadCountsForChatsBatch(
+    List<Map<String, String>> chats, // [{request_id, shop_id}]
+    String userId,
+  ) async {
+    if (chats.isEmpty) return {};
+    
+    try {
+      // Build chat keys for batch query
+      final chatKeys = chats.map((c) => '${c['request_id']}:${c['shop_id']}').toList();
+      
+      // Try using the optimized RPC function first
+      final response = await _client.rpc(
+        'get_unread_counts_batch',
+        params: {
+          'p_user_id': userId,
+          'p_chat_keys': chatKeys,
+        },
+      );
+      
+      // Convert to map
+      final counts = <String, int>{};
+      for (final row in response) {
+        counts[row['chat_key']] = (row['unread_count'] as num).toInt();
+      }
+      
+      // Fill in zeros for chats with no unread messages
+      for (final key in chatKeys) {
+        counts.putIfAbsent(key, () => 0);
+      }
+      
+      debugPrint('✅ [getUnreadCountsForChatsBatch] Batch query returned ${counts.length} results');
+      return counts;
+      
+    } catch (e) {
+      debugPrint('⚠️ [getUnreadCountsForChatsBatch] RPC not available, falling back to individual queries: $e');
+      
+      // Fallback: Query individually (N queries)
+      final counts = <String, int>{};
+      for (final chat in chats) {
+        final key = '${chat['request_id']}:${chat['shop_id']}';
+        counts[key] = await getUnreadCountForChat(
+          chat['request_id']!,
+          chat['shop_id']!,
+          userId,
+        );
+      }
+      return counts;
+    }
+  }
+  
+  /// Get last messages for multiple chats in a single batch query
+  /// 
+  /// OPTIMIZED (Pass 2 Phase 2): Reduces N queries to 1 query
+  Future<Map<String, Map<String, dynamic>>> getLastMessagesForChatsBatch(
+    List<Map<String, String>> chats, // [{request_id, shop_id}]
+  ) async {
+    if (chats.isEmpty) return {};
+    
+    try {
+      // Build chat keys for batch query
+      final chatKeys = chats.map((c) => '${c['request_id']}:${c['shop_id']}').toList();
+      
+      // Try using the optimized RPC function first
+      final response = await _client.rpc(
+        'get_last_messages_batch',
+        params: {'p_chat_keys': chatKeys},
+      );
+      
+      // Convert to map
+      final messages = <String, Map<String, dynamic>>{};
+      for (final row in response) {
+        messages[row['chat_key']] = {
+          'text': row['message_text'],
+          'sent_at': row['sent_at'],
+          'sender_id': row['sender_id'],
+          'is_read': row['is_read'],
+        };
+      }
+      
+      debugPrint('✅ [getLastMessagesForChatsBatch] Batch query returned ${messages.length} results');
+      return messages;
+      
+    } catch (e) {
+      debugPrint('⚠️ [getLastMessagesForChatsBatch] RPC not available, falling back to individual queries: $e');
+      
+      // Fallback: Query individually (N queries)
+      final messages = <String, Map<String, dynamic>>{};
+      for (final chat in chats) {
+        final key = '${chat['request_id']}:${chat['shop_id']}';
+        final msg = await getLastMessageForChat(chat['request_id']!, chat['shop_id']!);
+        if (msg != null) {
+          messages[key] = msg;
+        }
+      }
+      return messages;
+    }
+  }
+
   /// Get unread message count for a chat
   /// 
   /// FIXED: Queries request_chat_messages table directly (the actual source of chat messages)
   /// instead of the older conversations+messages tables
+  /// 
+  /// NOTE: For multiple chats, use getUnreadCountsForChatsBatch() instead to avoid N+1 queries
   Future<int> getUnreadCountForChat(String requestId, String shopId, String userId) async {
     try {
       // Query request_chat_messages directly - this is where chat messages are stored

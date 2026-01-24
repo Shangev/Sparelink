@@ -88,7 +88,13 @@ interface Order {
 }
 
 // Paystack configuration (test keys - replace with live in production)
-const PAYSTACK_PUBLIC_KEY = 'pk_test_xxxxx' // Replace with actual key
+// SEC-01 FIX: Use environment variable for Paystack key (never hardcode!)
+const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || ''
+
+// Warn if key is not configured (development only)
+if (!PAYSTACK_PUBLIC_KEY && typeof window !== 'undefined') {
+  console.warn('⚠️ PAYSTACK_PUBLIC_KEY not configured. Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in .env.local')
+}
 
 interface Driver {
   id: string
