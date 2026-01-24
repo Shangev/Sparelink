@@ -19,6 +19,13 @@
 
 ---
 
+## 📌 PASS 1 REFINEMENT - DEEP DETAIL EXPANSION
+
+> **Added:** January 23, 2026  
+> **Purpose:** Developer-level specifics for agent continuity
+
+---
+
 ## 1. PROJECT HIERARCHY
 
 ### 1.1 Repository Structure Overview
@@ -340,6 +347,393 @@ These are the critical files that form the foundation of each application.
 | Shop Dashboard TS/TSX | 20+ | ~10,000 |
 | SQL Migrations | 26 | ~3,000 |
 | **TOTAL** | **90+** | **~38,000** |
+
+---
+
+## 5.4 CRITICAL FILE BREAKDOWN (Logic Summaries)
+
+### `individual_chat_screen.dart` (2,099 lines) - 🔴 CRITICAL
+
+**Purpose:** Full-featured real-time chat interface between mechanics and shops.
+
+**5 Main Logic Areas:**
+
+| Area | Lines | Description |
+|------|-------|-------------|
+| **1. Real-time Messaging** | ~400 | Supabase Realtime subscriptions for messages, typing indicators, online status |
+| **2. Voice Messages** | ~300 | `AudioRecorder` recording, `AudioPlayer` playback, waveform visualization |
+| **3. File Attachments** | ~250 | `ImagePicker` for photos, `FilePicker` for documents, upload to Supabase Storage |
+| **4. Message Actions** | ~350 | Edit messages, delete, reply, forward, copy, report, selection mode |
+| **5. UI State Management** | ~400 | Search mode, scroll-to-top, loading states, error handling |
+
+**Key State Variables:**
+```dart
+List<Map<String, dynamic>> _messages = [];       // All chat messages
+RealtimeChannel? _messageSubscription;           // Realtime listener
+RealtimeChannel? _typingSubscription;            // Typing indicator channel
+bool _isRecordingVoice = false;                  // Voice recording state
+Set<String> _selectedMessageIds = {};            // Multi-select for bulk actions
+String? _editingMessageId;                       // Currently editing message
+```
+
+**Services Used:** `supabaseServiceProvider`, `storageServiceProvider`
+
+---
+
+### `request_part_screen.dart` (1,619 lines) - 🔴 CRITICAL
+
+**Purpose:** Multi-step wizard for mechanics to create part requests.
+
+**5 Main Logic Areas:**
+
+| Area | Lines | Description |
+|------|-------|-------------|
+| **1. Vehicle Selection** | ~350 | Saved vehicles, make/model dropdowns, VIN decoding, year picker |
+| **2. Part Selection** | ~300 | Category browser, part search, OEM part number lookup |
+| **3. Request Details** | ~250 | Urgency level, budget range, notes, image upload |
+| **4. Draft Management** | ~200 | Auto-save drafts, restore on return, clear on submit |
+| **5. Form Validation** | ~150 | Step-by-step validation, error messages, required fields |
+
+**Key State Variables:**
+```dart
+int _currentStep = 0;                            // Wizard step (0-3)
+List<SavedVehicle> _savedVehicles = [];          // User's garage
+List<Map<String, dynamic>> _selectedParts = [];  // Parts in request
+String _urgencyLevel = 'normal';                 // urgent/normal/flexible
+bool _hasDraft = false;                          // Draft restoration flag
+```
+
+**Services Used:** `vehicleServiceProvider`, `draftServiceProvider`, `storageServiceProvider`, `uxServiceProvider`
+
+---
+
+### `supabase_service.dart` (1,091 lines) - 🔴 CRITICAL
+
+**Purpose:** Central data access layer - ALL Supabase operations go through this file.
+
+**5 Main Logic Areas:**
+
+| Area | Lines | Description |
+|------|-------|-------------|
+| **1. Authentication** | ~100 | Phone OTP, password sign-in, sign-out, session management |
+| **2. Profile & Shops** | ~150 | CRUD profiles, get shops by suburb, shop details |
+| **3. Requests & Offers** | ~250 | Create/read requests, get/accept/reject offers, counter-offers |
+| **4. Orders** | ~150 | Create orders from offers, get orders, update status |
+| **5. Chat & Notifications** | ~300 | Conversations, messages, read status, notifications CRUD |
+
+*See Section 5.5 for complete method listing.*
+
+---
+
+### `settings_service.dart` (873 lines) - 🟠 HIGH
+
+**Purpose:** App preferences, biometric auth, session management, notification settings.
+
+**5 Main Logic Areas:**
+
+| Area | Lines | Description |
+|------|-------|-------------|
+| **1. User Preferences** | ~200 | Theme, language, units, default addresses |
+| **2. Biometric Auth** | ~150 | Fingerprint/Face ID setup, verification, secure storage |
+| **3. Notification Settings** | ~150 | Push preferences, quiet hours, channel toggles |
+| **4. Session Management** | ~150 | Active sessions, device tracking, remote logout |
+| **5. Data & Privacy** | ~100 | Export data, delete account, privacy toggles |
+
+**Services Used:** `flutter_secure_storage`, `local_auth`, `shared_preferences`
+
+---
+
+### `shop-dashboard/settings/page.tsx` (1,637 lines) - 🔴 CRITICAL
+
+**Purpose:** Complete shop configuration panel with staff management and SSO.
+
+**5 Main Logic Areas:**
+
+| Area | Lines | Description |
+|------|-------|-------------|
+| **1. Shop Profile** | ~400 | Name, address, phone, operating hours, logo upload |
+| **2. Staff Management** | ~350 | Add/remove staff, role assignment (owner/staff), invitations |
+| **3. Session Security** | ~250 | Active sessions list, device info, force logout |
+| **4. SSO Configuration** | ~200 | Google SSO toggle, email linking, provider management |
+| **5. Payment Settings** | ~200 | Bank details, payout preferences, Paystack integration |
+
+---
+
+## 5.5 SUPABASE SERVICE METHOD MAPPING
+
+Complete listing of all public methods in `supabase_service.dart`:
+
+### Authentication Methods (Lines 44-108)
+```dart
+Future<AuthResponse> signUpWithPhone({phone, password, fullName, role})
+Future<void> signInWithOtp({phone})
+Future<AuthResponse> verifyOtp({phone, otp})
+Future<AuthResponse> signInWithPassword({phone, password})
+Future<void> signOut()
+Session? get currentSession
+User? get currentUser
+```
+
+### Profile Methods (Lines 110-184)
+```dart
+Future<Map<String, dynamic>?> getProfile(String userId)
+Future<void> updateProfile({userId, fullName, phone, suburb, streetAddress, city, postalCode, province})
+Future<List<Map<String, dynamic>>> getShopsBySuburb({suburb, limit})
+Future<void> notifyNearbyShops({requestId, suburb, partName, vehicleInfo})
+```
+
+### Part Request Methods (Lines 186-326)
+```dart
+Future<Map<String, dynamic>> createPartRequest({mechanicId, vehicleMake, vehicleModel, vehicleYear, partCategory, partDescription, imageUrl, engineCode, partNumber, notes})
+Future<List<Map<String, dynamic>>> getMechanicRequests(String mechanicId)
+Future<Map<String, dynamic>?> getRequest(String requestId)
+Future<void> updateRequestStatus(String requestId, String status)
+```
+
+### Shop Methods (Lines 328-369)
+```dart
+Future<List<Map<String, dynamic>>> getNearbyShops({latitude, longitude, radiusKm})
+Future<Map<String, dynamic>?> getShop(String shopId)
+Future<List<Map<String, dynamic>>> getAllShops()
+```
+
+### Offer Methods (Lines 371-503)
+```dart
+Future<List<Map<String, dynamic>>> getOffersForRequest(String requestId)
+Future<void> rejectOffer({offerId, reason})
+Future<Map<String, dynamic>> acceptOffer({offerId, deliveryAddress, deliveryInstructions, deliveryOption})
+Future<void> sendCounterOffer({offerId, counterPrice, counterNotes})
+```
+
+### Order Methods (Lines 505-563)
+```dart
+Future<List<Map<String, dynamic>>> getMechanicOrders(String mechanicId)
+Future<Map<String, dynamic>?> getOrder(String orderId)
+Future<List<Map<String, dynamic>>> getOrdersForRequest(String requestId)
+```
+
+### Chat Methods (Lines 565-857)
+```dart
+Future<List<Map<String, dynamic>>> getMechanicRequestChats(String mechanicId)
+Future<Map<String, dynamic>> getOrCreateConversation({requestId, shopId, mechanicId})
+Future<List<Map<String, dynamic>>> getUserConversations(String userId)
+Future<List<Map<String, dynamic>>> getMessages(String conversationId)
+Future<Map<String, dynamic>> sendMessage({conversationId, senderId, content, messageType, attachmentUrl})
+Future<int> getUnreadCountForChat(String requestId, String shopId, String userId)
+Future<void> markMessagesAsRead(String conversationId, String userId)
+Future<void> markRequestChatMessagesAsRead(String requestId, String shopId, String userId)
+Future<Map<String, dynamic>?> getLastMessageForChat(String requestId, String shopId)
+```
+
+### Storage Methods (Lines 859-913)
+```dart
+Future<String> uploadPartImage({imageBytes, fileName})
+Future<String> uploadPartImageFromFile({file, fileName})
+Future<void> deletePartImage(String path)
+```
+
+### Notification Methods (Lines 916-989)
+```dart
+Future<List<Map<String, dynamic>>> getUserNotifications(String userId)
+Future<int> getUnreadNotificationCount(String userId)
+Future<void> markNotificationAsRead(String notificationId)
+Future<void> markAllNotificationsAsRead(String userId)
+Future<void> deleteNotification(String notificationId)
+Future<void> notifyMechanicOfNewQuote({mechanicId, shopName, partCategory, price})
+```
+
+---
+
+## 5.6 STATE MANAGEMENT LINKS
+
+### Flutter App - Provider → Screen Mapping
+
+| Provider | Type | Location | Used By Screens |
+|----------|------|----------|-----------------|
+| `supabaseClientProvider` | `Provider<SupabaseClient>` | `supabase_service.dart:7` | All screens via services |
+| `supabaseServiceProvider` | `Provider<SupabaseService>` | `supabase_service.dart:12` | All data screens |
+| `authStateProvider` | `StreamProvider<AuthState>` | `supabase_service.dart:18` | `app_router.dart` (auth guard) |
+| `currentUserProvider` | `Provider<User?>` | `supabase_service.dart:23` | Profile, Settings |
+| `currentUserProfileProvider` | `FutureProvider<Map?>` | `supabase_service.dart:28` | Home, Profile |
+| `storageServiceProvider` | `Provider<StorageService>` | `storage_service.dart` | All screens needing user ID |
+| `vehicleServiceProvider` | `Provider<VehicleService>` | `vehicle_service.dart` | RequestPart, Camera |
+| `paymentServiceProvider` | `Provider<PaymentService>` | `payment_service.dart` | Checkout, Transactions |
+| `settingsServiceProvider` | `Provider<SettingsService>` | `settings_service.dart` | Settings, Profile |
+| `draftServiceProvider` | `Provider<DraftService>` | `draft_service.dart` | RequestPart |
+| `selectedChatProvider` | `StateProvider<Map?>` | `chat_providers.dart:4` | Chats (master-detail) |
+| `isDesktopChatModeProvider` | `StateProvider<bool>` | `chat_providers.dart:7` | Chats (responsive) |
+| `routerProvider` | `Provider<GoRouter>` | `app_router.dart` | `main.dart` |
+
+### Screen → Provider Dependencies
+
+| Screen | Providers Consumed |
+|--------|-------------------|
+| `home_screen.dart` | `storageServiceProvider`, `supabaseServiceProvider` |
+| `request_part_screen.dart` | `storageServiceProvider`, `vehicleServiceProvider`, `draftServiceProvider`, `uxServiceProvider` |
+| `individual_chat_screen.dart` | `supabaseServiceProvider`, `storageServiceProvider` |
+| `my_requests_screen.dart` | `supabaseServiceProvider`, `storageServiceProvider` |
+| `checkout_screen.dart` | `paymentServiceProvider` |
+| `transactions_screen.dart` | `paymentServiceProvider` |
+| `saved_cards_screen.dart` | `paymentServiceProvider` |
+| `settings_screen.dart` | `settingsServiceProvider`, `storageServiceProvider` |
+| `order_tracking_screen.dart` | `supabaseServiceProvider` |
+| `marketplace_results_screen.dart` | `supabaseServiceProvider` |
+
+---
+
+## 5.7 SHOP DASHBOARD ROUTING DEEP DIVE
+
+### Next.js App Router Structure
+
+```
+shop-dashboard/src/app/
+│
+├── layout.tsx                 # Root HTML wrapper (19 lines)
+│   └── Provides: <html>, <body>, metadata
+│
+├── page.tsx                   # Landing redirect (minimal)
+│   └── Redirects to /login or /dashboard
+│
+├── globals.css                # Tailwind + custom CSS
+│
+├── login/
+│   └── page.tsx (292 lines)   # Shop owner authentication
+│       ├── Email/password form
+│       ├── "Remember me" checkbox
+│       ├── Session persistence
+│       └── Redirect to /dashboard on success
+│
+└── dashboard/
+    ├── layout.tsx (214 lines) # 🔴 DASHBOARD SHELL
+    │   ├── Auth guard (redirects if not logged in)
+    │   ├── Shop data fetch (id, name, phone)
+    │   ├── Sidebar navigation (9 items)
+    │   ├── Mobile hamburger menu
+    │   ├── Session activity tracking
+    │   └── Logout handler
+    │
+    ├── page.tsx (575 lines)   # Main dashboard
+    │   ├── 4 stat cards (requests, quotes, accepted, orders)
+    │   ├── Recent activity feed
+    │   └── Quick action buttons
+    │
+    ├── requests/
+    │   └── page.tsx (1,153 lines)
+    │       ├── Request list with filters
+    │       ├── Search by vehicle/part
+    │       ├── Quote creation modal
+    │       ├── Bulk quote mode
+    │       ├── Priority flagging
+    │       └── Auto-archive (30 days)
+    │
+    ├── quotes/
+    │   └── page.tsx (860 lines)
+    │       ├── Sent quotes list
+    │       ├── Status badges (pending/accepted/rejected)
+    │       ├── Counter-offer handling
+    │       └── Quote editing
+    │
+    ├── orders/
+    │   └── page.tsx (1,147 lines)
+    │       ├── Order management table
+    │       ├── Status updates (processing→shipped→delivered)
+    │       ├── Delivery tracking
+    │       └── Invoice generation
+    │
+    ├── chats/
+    │   └── page.tsx (1,131 lines)
+    │       ├── Conversation list
+    │       ├── Real-time messaging
+    │       ├── Typing indicators
+    │       └── Read receipts
+    │
+    ├── inventory/
+    │   └── page.tsx (631 lines)
+    │       ├── Parts CRUD
+    │       ├── Stock level tracking
+    │       ├── Low stock alerts
+    │       ├── Category management
+    │       └── CSV export
+    │
+    ├── customers/
+    │   └── page.tsx (520 lines)
+    │       ├── Customer list
+    │       ├── Order history per customer
+    │       ├── Contact info
+    │       └── Loyalty tier display
+    │
+    ├── analytics/
+    │   └── page.tsx (501 lines)
+    │       ├── Revenue charts
+    │       ├── Order trends
+    │       ├── Top parts sold
+    │       └── Customer metrics
+    │
+    └── settings/
+        └── page.tsx (1,637 lines)
+            ├── Shop profile editing
+            ├── Staff management
+            ├── Session security
+            ├── SSO configuration
+            └── Payment settings
+```
+
+### Dashboard Layout Navigation Items
+
+```typescript
+// From dashboard/layout.tsx lines 101-111
+const navItems = [
+  { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
+  { href: "/dashboard/requests", icon: FileText, label: "Part Requests" },
+  { href: "/dashboard/quotes", icon: Send, label: "My Quotes" },
+  { href: "/dashboard/chats", icon: MessageSquare, label: "Chats" },
+  { href: "/dashboard/orders", icon: Package, label: "Orders" },
+  { href: "/dashboard/inventory", icon: Boxes, label: "Inventory" },
+  { href: "/dashboard/customers", icon: Users, label: "Customers" },
+  { href: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
+  { href: "/dashboard/settings", icon: Settings, label: "Settings" },
+]
+```
+
+### API Routes Structure
+
+```
+shop-dashboard/src/app/api/
+│
+├── analytics/
+│   └── route.ts              # GET: Dashboard statistics
+│
+├── customers/
+│   ├── route.ts              # GET: Customer list with stats
+│   └── [id]/
+│       └── orders/
+│           └── route.ts      # GET: Customer's order history
+│
+├── inventory/
+│   ├── route.ts              # GET, POST, PUT, DELETE: Inventory CRUD
+│   └── alerts/
+│       └── route.ts          # GET: Low stock alerts
+│
+├── invoices/
+│   ├── generate/
+│   │   └── route.ts          # POST: Generate PDF invoice
+│   └── send/
+│       └── route.ts          # POST: Email invoice to customer
+│
+├── payments/
+│   ├── initialize/
+│   │   └── route.ts          # POST: Start Paystack payment
+│   ├── verify/
+│   │   └── route.ts          # POST: Verify payment status
+│   └── webhook/
+│       └── route.ts          # POST: Paystack webhook handler
+│
+└── places/
+    ├── autocomplete/
+    │   └── route.ts          # GET: Address autocomplete
+    └── details/
+        └── route.ts          # GET: Place details lookup
+```
 
 ---
 
