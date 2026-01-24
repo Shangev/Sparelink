@@ -427,3 +427,45 @@
 | 2026-01-23 | Implemented Order & Delivery features for Flutter mechanic app: PDF Invoice generation, Real-time GPS tracking with Google Maps, Dynamic ETA estimates, Proof of Delivery photos, Delivery Instructions, Alternative Addresses selection, Order History with search/filter, Buy Again/Reorder functionality |
 | 2026-01-23 | Implemented complete Payment Infrastructure for Flutter mechanic app: Paystack SDK checkout, Saved cards with tokenization, Refund request flow with photo upload, Transaction history with stats and filtering, Payment routes in app_router |
 
+---
+
+## 🚀 POST-LAUNCH SETUP CHECKLIST
+
+### GitHub Secrets Setup (Required for CI/CD)
+
+Go to: **https://github.com/Shangev/Sparelink/settings/secrets/actions**
+
+Click **"New repository secret"** and add each:
+
+| Done | Secret Name | Value |
+|------|-------------|-------|
+| [ ] | `SUPABASE_URL` | `https://your-project.supabase.co` |
+| [ ] | `SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIs...` |
+| [ ] | `VERCEL_TOKEN` | Your Vercel API token |
+| [ ] | `VERCEL_ORG_ID` | Your Vercel org ID |
+| [ ] | `VERCEL_PROJECT_ID` | Your Vercel project ID |
+
+---
+
+### Watch the First Pipeline Run
+
+**GitHub Actions Dashboard:** https://github.com/Shangev/Sparelink/actions
+
+The push has triggered:
+
+| Done | Pipeline | Description |
+|------|----------|-------------|
+| [ ] | **Flutter CI/CD** | Will analyze, test, and build APK/AAB |
+| [ ] | **Dashboard CI/CD** | Will lint, test, and deploy to Vercel |
+
+---
+
+### Verify Deployments
+
+| Done | Task | Notes |
+|------|------|-------|
+| [ ] | Flutter APK builds successfully | Check Actions artifacts |
+| [ ] | Flutter AAB builds successfully | For Play Store upload |
+| [ ] | Dashboard deploys to Vercel | Check Vercel dashboard |
+| [ ] | All tests pass | Green checkmarks in Actions |
+
