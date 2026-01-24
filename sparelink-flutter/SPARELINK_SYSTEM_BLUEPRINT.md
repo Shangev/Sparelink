@@ -4709,3 +4709,463 @@ $$ LANGUAGE plpgsql;
 > **Database Health:** Production Ready  
 > **Next Action:** Deploy Flutter app update to use optimized queries
 
+
+---
+
+# PASS 2 PHASE 4: ERROR HANDLING & RESILIENCE
+
+> **Phase 4 Start:** January 24, 2026  
+> **Objective:** Ensure graceful degradation and user-friendly error handling  
+> **Focus:** Exception handling, offline support, retry logic, user feedback
+
+---
+
+## 53. ERROR HANDLING AUDIT
+
+### 53.1 Flutter Error Handling Patterns
+
+| Location | Pattern | Coverage | Issue |
+|----------|---------|----------|-------|
+| `supabase_service.dart` | try-catch with custom exceptions | 🟢 Good | CS-17 exceptions implemented |
+| `api_service.dart` | Dio interceptors | 🟢 Good | 401 handling, logging |
+| `payment_service.dart` | Explicit error states | 🟢 Good | CS-18 fix implemented |
+| `offline_cache_service.dart` | Silent fallback | 🟡 OK | No user notification |
+| UI Screens | Mixed | 🟡 Varies | Some screens lack error states |
+
+### 53.2 Exception Hierarchy
+
+```
+Exception
+├── QuoteExpiredException (CS-17)
+├── QuoteAlreadyAcceptedException (CS-17)
+├── QuoteRejectedException (CS-17)
+├── PostgrestException (Supabase)
+├── AuthException (Supabase)
+├── StorageException (Supabase)
+└── DioException (HTTP)
+    ├── connectionTimeout
+    ├── receiveTimeout
+    ├── badResponse (4xx, 5xx)
+    └── cancel
+```
+
+### 53.3 Error Handling Coverage by Method
+
+| Service Method | Has try-catch | Custom Exception | User Message | Retry Logic |
+|----------------|---------------|------------------|--------------|-------------|
+| `signInWithPassword` | ❌ | ❌ | ❌ | ❌ |
+| `signUpWithPhone` | ❌ | ❌ | ❌ | ❌ |
+| `getProfile` | ❌ | ❌ | ❌ | ❌ |
+| `updateProfile` | ❌ | ❌ | ❌ | ❌ |
+| `createPartRequest` | ❌ | ❌ | ❌ | ❌ |
+| `getMechanicRequests` | ✅ | ❌ | ❌ | ✅ (fallback) |
+| `getOffersForRequest` | ❌ | ❌ | ❌ | ❌ |
+| `acceptOffer` | ✅ | ✅ | ✅ | ❌ |
+| `rejectOffer` | ❌ | ❌ | ❌ | ❌ |
+| `getMechanicOrders` | ❌ | ❌ | ❌ | ❌ |
+| `sendMessage` | ❌ | ❌ | ❌ | ❌ |
+| `uploadPartImage` | ❌ | ❌ | ❌ | ❌ |
+| `getUnreadCountForChat` | ✅ | ❌ | ❌ | ✅ (fallback) |
+| `markMessagesAsRead` | ✅ | ❌ | ❌ | ❌ |
+
+**Coverage:** 4/14 methods (29%) have proper error handling
+
+---
+
+## 54. RESILIENCE PATTERNS
+
+### 54.1 Current Resilience Features
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| **Offline Cache** | ✅ Implemented | `offline_cache_service.dart` |
+| **Rate Limiting** | ✅ Implemented | `rate_limiter_service.dart` |
+| **Query Fallbacks** | ✅ Implemented | View → RPC → Legacy pattern |
+| **Auth Token Refresh** | ✅ Supabase | Automatic JWT refresh |
+| **Retry on Timeout** | ❌ Missing | No automatic retry |
+| **Circuit Breaker** | ❌ Missing | No circuit breaker |
+| **Exponential Backoff** | ❌ Missing | No backoff strategy |
+| **Graceful Degradation** | 🟡 Partial | Some screens have empty states |
+
+### 54.2 Offline Mode Analysis
+
+**Current Implementation (`offline_cache_service.dart`):**
+```dart
+// Cache expiry: 24 hours
+static const Duration cacheExpiry = Duration(hours: 24);
+
+// Cached data types:
+- User's part requests
+- Notifications
+```
+
+**Gap Analysis:**
+| Data | Should Cache? | Currently Cached? | Priority |
+|------|---------------|-------------------|----------|
+| Part Requests | ✅ Yes | ✅ Yes | Critical |
+| Notifications | ✅ Yes | ✅ Yes | High |
+| Orders | ✅ Yes | ❌ No | High |
+| Offers | ✅ Yes | ❌ No | High |
+| Profile | ✅ Yes | ❌ No | Medium |
+| Conversations | ✅ Yes | ❌ No | Medium |
+| Vehicle Makes/Models | ✅ Yes | ❌ No | Low (static) |
+
+### 54.3 WebSocket Reconnection (Missing)
+
+**Current Issue:** Real-time subscriptions don't reconnect after network interruption.
+
+**Recommended Pattern:**
+```dart
+class ResilientRealtimeChannel {
+  final SupabaseClient _client;
+  RealtimeChannel? _channel;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const maxAttempts = 5;
+  static const baseDelay = Duration(seconds: 2);
+  
+  void subscribe(String channelName, Function(Map) onData) {
+    _connect(channelName, onData);
+  }
+  
+  void _connect(String channelName, Function(Map) onData) {
+    _channel = _client
+        .channel(channelName)
+        .onPostgresChanges(/* ... */)
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.closed) {
+            _scheduleReconnect(channelName, onData);
+          } else if (status == RealtimeSubscribeStatus.subscribed) {
+            _reconnectAttempts = 0;
+          }
+        });
+  }
+  
+  void _scheduleReconnect(String channelName, Function(Map) onData) {
+    if (_reconnectAttempts >= maxAttempts) {
+      debugPrint('Max reconnect attempts reached');
+      return;
+    }
+    
+    final delay = baseDelay * pow(2, _reconnectAttempts);
+    _reconnectAttempts++;
+    
+    _reconnectTimer = Timer(delay, () => _connect(channelName, onData));
+  }
+  
+  void dispose() {
+    _reconnectTimer?.cancel();
+    _channel?.unsubscribe();
+  }
+}
+```
+
+---
+
+## 55. USER FEEDBACK PATTERNS
+
+### 55.1 Current Error Display Methods
+
+| Method | Usage | UX Quality |
+|--------|-------|------------|
+| `SnackBar` | Most screens | 🟢 Good |
+| `AlertDialog` | Critical errors | 🟢 Good |
+| `debugPrint` | Console only | 🔴 User invisible |
+| Silent failure | Some methods | 🔴 Poor UX |
+
+### 55.2 Error Message Quality
+
+| Error Type | Current Message | Better Message |
+|------------|-----------------|----------------|
+| Network timeout | (none/exception text) | "Connection timed out. Please check your internet and try again." |
+| Auth expired | (none) | "Your session has expired. Please log in again." |
+| Quote expired | ✅ "This quote has expired..." | Good! |
+| Payment failed | ✅ Gateway response shown | Good! |
+| Upload failed | (none/exception text) | "Failed to upload image. Please try a smaller file." |
+| Server error | (none/exception text) | "Something went wrong. Please try again later." |
+
+### 55.3 Loading States Audit
+
+| Screen | Loading Indicator | Empty State | Error State |
+|--------|-------------------|-------------|-------------|
+| Home | ✅ Yes | ✅ Yes | 🟡 Partial |
+| My Requests | ✅ Yes | ✅ Yes | 🟡 Partial |
+| Request Detail | ✅ Yes | ✅ Yes | ❌ No |
+| Chats | ✅ Yes | ✅ Yes | 🟡 Partial |
+| Chat Detail | ✅ Yes | ✅ Yes | ❌ No |
+| Orders | ✅ Yes | ✅ Yes | 🟡 Partial |
+| Order Tracking | ✅ Yes | N/A | ❌ No |
+| Profile | ✅ Yes | N/A | ❌ No |
+| Notifications | ✅ Yes | ✅ Yes | 🟡 Partial |
+
+---
+
+## 56. RECOMMENDED ERROR HANDLING WRAPPER
+
+### 56.1 Generic Try-Catch Wrapper
+
+```dart
+/// lib/shared/services/error_handler_service.dart
+
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class AppException implements Exception {
+  final String message;
+  final String? code;
+  final dynamic originalError;
+  final bool isRecoverable;
+  
+  AppException({
+    required this.message,
+    this.code,
+    this.originalError,
+    this.isRecoverable = true,
+  });
+  
+  @override
+  String toString() => message;
+}
+
+class ErrorHandler {
+  /// Wrap any async operation with standardized error handling
+  static Future<T> guard<T>({
+    required Future<T> Function() operation,
+    required String operationName,
+    T? fallbackValue,
+    bool showToUser = true,
+  }) async {
+    try {
+      return await operation();
+    } on PostgrestException catch (e) {
+      debugPrint('⚠️ [$operationName] PostgrestException: ${e.code} - ${e.message}');
+      throw AppException(
+        message: _mapPostgrestError(e),
+        code: e.code,
+        originalError: e,
+      );
+    } on AuthException catch (e) {
+      debugPrint('⚠️ [$operationName] AuthException: ${e.message}');
+      throw AppException(
+        message: _mapAuthError(e),
+        code: e.statusCode,
+        originalError: e,
+        isRecoverable: false,
+      );
+    } on StorageException catch (e) {
+      debugPrint('⚠️ [$operationName] StorageException: ${e.message}');
+      throw AppException(
+        message: _mapStorageError(e),
+        originalError: e,
+      );
+    } catch (e) {
+      debugPrint('⚠️ [$operationName] Unexpected error: $e');
+      
+      if (fallbackValue != null) {
+        return fallbackValue;
+      }
+      
+      throw AppException(
+        message: 'Something went wrong. Please try again.',
+        originalError: e,
+      );
+    }
+  }
+  
+  static String _mapPostgrestError(PostgrestException e) {
+    switch (e.code) {
+      case 'PGRST116':
+        return 'No data found.';
+      case '23505':
+        return 'This item already exists.';
+      case '23503':
+        return 'Cannot delete - this item is being used elsewhere.';
+      case 'P0001':
+        return 'This quote has already been accepted.';
+      case 'P0002':
+        return 'This quote has expired.';
+      case 'P0003':
+        return 'This quote has been rejected.';
+      case 'P0010':
+        return 'Invalid status change. Please refresh and try again.';
+      default:
+        return 'Database error. Please try again.';
+    }
+  }
+  
+  static String _mapAuthError(AuthException e) {
+    final msg = e.message.toLowerCase();
+    if (msg.contains('invalid login')) {
+      return 'Invalid phone number or password.';
+    }
+    if (msg.contains('email not confirmed')) {
+      return 'Please verify your phone number first.';
+    }
+    if (msg.contains('expired')) {
+      return 'Your session has expired. Please log in again.';
+    }
+    return 'Authentication failed. Please try again.';
+  }
+  
+  static String _mapStorageError(StorageException e) {
+    final msg = e.message?.toLowerCase() ?? '';
+    if (msg.contains('payload too large') || msg.contains('file size')) {
+      return 'File is too large. Maximum size is 10MB.';
+    }
+    if (msg.contains('not found')) {
+      return 'File not found.';
+    }
+    return 'Failed to upload file. Please try again.';
+  }
+}
+```
+
+### 56.2 Retry Utility
+
+```dart
+/// lib/shared/utils/retry_helper.dart
+
+class RetryHelper {
+  /// Retry an operation with exponential backoff
+  static Future<T> withRetry<T>({
+    required Future<T> Function() operation,
+    int maxAttempts = 3,
+    Duration initialDelay = const Duration(seconds: 1),
+    bool Function(Exception)? shouldRetry,
+  }) async {
+    int attempt = 0;
+    Duration delay = initialDelay;
+    
+    while (true) {
+      try {
+        attempt++;
+        return await operation();
+      } catch (e) {
+        if (attempt >= maxAttempts) rethrow;
+        
+        if (e is Exception && shouldRetry != null && !shouldRetry(e)) {
+          rethrow;
+        }
+        
+        debugPrint('⚠️ Attempt $attempt failed, retrying in ${delay.inSeconds}s...');
+        await Future.delayed(delay);
+        delay *= 2; // Exponential backoff
+      }
+    }
+  }
+  
+  /// Check if error is retryable (network issues, timeouts)
+  static bool isRetryable(Exception e) {
+    if (e is PostgrestException) {
+      // Don't retry constraint violations
+      return !['23505', '23503', 'P0001', 'P0002', 'P0003'].contains(e.code);
+    }
+    return true; // Retry other exceptions
+  }
+}
+```
+
+---
+
+## 57. DASHBOARD ERROR HANDLING
+
+### 57.1 Current State
+
+| API Route | Error Handling | User Feedback | Logging |
+|-----------|----------------|---------------|---------|
+| `/api/analytics` | ✅ try-catch | ✅ Error response | ✅ console.log |
+| `/api/customers` | ✅ try-catch | ✅ Error response | ✅ console.log |
+| `/api/inventory` | ✅ try-catch | ✅ Error response | ✅ console.log |
+| `/api/payments/*` | ✅ try-catch | ✅ Error response | ✅ console.log |
+| Dashboard pages | 🟡 Varies | 🟡 Toast/alert | ✅ console.log |
+
+### 57.2 Dashboard Error Pattern
+
+```typescript
+// Consistent error response pattern for API routes
+export async function POST(request: Request) {
+  try {
+    // ... operation
+    return NextResponse.json({ success: true, data });
+  } catch (error: any) {
+    console.error('[API_NAME] Error:', error);
+    
+    // Map common Supabase errors
+    const message = mapSupabaseError(error);
+    
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: error.status || 500 }
+    );
+  }
+}
+
+function mapSupabaseError(error: any): string {
+  if (error.code === '23505') return 'This item already exists';
+  if (error.code === 'PGRST116') return 'Item not found';
+  if (error.code === '42501') return 'Permission denied';
+  return error.message || 'An unexpected error occurred';
+}
+```
+
+---
+
+## 58. PASS 2 PHASE 4 SUMMARY
+
+### 58.1 Error Handling Score
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| **Exception Types** | 80/100 | Custom exceptions for CS-17 |
+| **try-catch Coverage** | 40/100 | Only 4/14 critical methods covered |
+| **User Messages** | 60/100 | Some screens lack error states |
+| **Retry Logic** | 30/100 | Only fallback patterns, no retry |
+| **Offline Support** | 50/100 | Requests cached, orders/offers missing |
+| **WebSocket Resilience** | 20/100 | No reconnection logic |
+| **OVERALL** | **47/100** | Needs significant improvement |
+
+### 58.2 Priority Fixes
+
+| Priority | Issue | Fix | Effort |
+|----------|-------|-----|--------|
+| 🔴 P0 | WebSocket reconnection | Add reconnect pattern | 4 hours |
+| 🔴 P0 | Try-catch on critical methods | Wrap with ErrorHandler | 3 hours |
+| 🟠 P1 | Offline cache for orders | Extend offline_cache_service | 2 hours |
+| 🟠 P1 | Retry with backoff | Add RetryHelper | 2 hours |
+| 🟡 P2 | Error states on all screens | Add error widgets | 4 hours |
+| 🟡 P2 | User-friendly error messages | Create message mappings | 2 hours |
+
+### 58.3 Phase 4 Certification
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║   ⚠️ PASS 2 PHASE 4: ERROR HANDLING & RESILIENCE            ║
+║                                                              ║
+║   Status: ✅ AUDIT COMPLETE                                  ║
+║   Resilience Score: 47/100                                   ║
+║                                                              ║
+║   ✅ Exception hierarchy documented                          ║
+║   ✅ Error handling coverage audited (40%)                   ║
+║   ✅ Offline support analyzed                                ║
+║   ✅ User feedback patterns reviewed                         ║
+║   ✅ Recommended patterns provided                           ║
+║                                                              ║
+║   ⚠️ Major Gaps Found:                                       ║
+║   - WebSocket reconnection missing                          ║
+║   - 10/14 methods lack try-catch                            ║
+║   - Offline cache incomplete                                ║
+║   - No retry logic                                          ║
+║                                                              ║
+║   Next: Implement ErrorHandler and RetryHelper              ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+---
+
+> **Pass 2 Phase 4 Completed:** January 24, 2026  
+> **Auditor:** Rovo Dev Resilience Engine  
+> **Score:** 47/100 (Needs Improvement)  
+> **Recommended Actions:** 6 fixes prioritized
+
