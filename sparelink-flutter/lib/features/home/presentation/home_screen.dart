@@ -170,33 +170,68 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       final supabase = Supabase.instance.client;
       
-      // BUG FIX: Use part_requests_with_counts view for accurate counts
-      // The view uses mechanic_id (not user_id) and includes offer_count
-      final requestsWithCounts = await supabase
-          .from('part_requests_with_counts')
-          .select('id, status, offer_count, quoted_count')
-          .eq('mechanic_id', userId);
-      
-      final requestsList = requestsWithCounts as List;
-      final totalRequests = requestsList.length;
-      
-      // Count pending quotes from the view's offer_count for pending/offered requests
+      int totalRequests = 0;
       int pendingQuotes = 0;
-      for (final req in requestsList) {
-        if (req['status'] == 'pending' || req['status'] == 'offered') {
-          pendingQuotes += (req['offer_count'] as int? ?? 0);
+      
+      // Try the optimized view first, fallback to direct table query
+      try {
+        // BUG FIX: Use part_requests_with_counts view for accurate counts
+        final requestsWithCounts = await supabase
+            .from('part_requests_with_counts')
+            .select('id, status, offer_count, quoted_count')
+            .eq('mechanic_id', userId);
+        
+        final requestsList = requestsWithCounts as List;
+        totalRequests = requestsList.length;
+        
+        // Count pending quotes from the view's offer_count
+        for (final req in requestsList) {
+          if (req['status'] == 'pending' || req['status'] == 'offered') {
+            pendingQuotes += (req['offer_count'] as int? ?? 0);
+          }
+        }
+        debugPrint('📊 [HomeStats] Using view - found $totalRequests requests');
+      } catch (viewError) {
+        debugPrint('⚠️ [HomeStats] View failed, using fallback: $viewError');
+        
+        // FALLBACK: Direct table query if view doesn't exist or RLS blocks it
+        final directRequests = await supabase
+            .from('part_requests')
+            .select('id, status')
+            .eq('mechanic_id', userId);
+        
+        final requestsList = directRequests as List;
+        totalRequests = requestsList.length;
+        debugPrint('📊 [HomeStats] Using direct query - found $totalRequests requests');
+        
+        // Get pending offers count separately
+        if (totalRequests > 0) {
+          try {
+            final requestIds = requestsList.map((r) => r['id'] as String).toList();
+            final offersResponse = await supabase
+                .from('offers')
+                .select('id')
+                .inFilter('request_id', requestIds)
+                .eq('status', 'pending');
+            pendingQuotes = (offersResponse as List).length;
+          } catch (_) {}
         }
       }
       
       // Get active deliveries (orders in transit)
-      final deliveriesResponse = await supabase
-          .from('orders')
-          .select('id')
-          .eq('mechanic_id', userId)
-          .inFilter('status', ['confirmed', 'preparing', 'processing', 'shipped', 'out_for_delivery']);
+      int activeDeliveries = 0;
+      try {
+        final deliveriesResponse = await supabase
+            .from('orders')
+            .select('id')
+            .eq('mechanic_id', userId)
+            .inFilter('status', ['confirmed', 'preparing', 'processing', 'shipped', 'out_for_delivery']);
+        activeDeliveries = (deliveriesResponse as List).length;
+      } catch (e) {
+        debugPrint('⚠️ [HomeStats] Orders query failed: $e');
+      }
       
       // BUG FIX: Get unread messages using proper RLS-enabled query
-      // Check both regular messages and request_chat_messages
       int unreadMessages = 0;
       
       try {
@@ -210,20 +245,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       } catch (_) {}
       
       try {
-        // Request chat messages (unread from shops)
-        final requestChatMessages = await supabase
-            .from('request_chat_messages')
-            .select('id')
-            .eq('read', false)
-            .neq('sender_id', userId);
-        unreadMessages += (requestChatMessages as List).length;
+        // Request chat messages (unread from shops) - try both column names
+        try {
+          final requestChatMessages = await supabase
+              .from('request_chat_messages')
+              .select('id')
+              .eq('is_read', false)
+              .neq('sender_id', userId);
+          unreadMessages += (requestChatMessages as List).length;
+        } catch (_) {
+          // Fallback: try 'read' instead of 'is_read'
+          final requestChatMessages = await supabase
+              .from('request_chat_messages')
+              .select('id')
+              .eq('read', false)
+              .neq('sender_id', userId);
+          unreadMessages += (requestChatMessages as List).length;
+        }
       } catch (_) {}
       
-      debugPrint('📊 [HomeStats] Total Requests: $totalRequests, Pending Quotes: $pendingQuotes, Deliveries: ${(deliveriesResponse as List).length}, Unread: $unreadMessages');
+      debugPrint('📊 [HomeStats] Final: Requests=$totalRequests, Quotes=$pendingQuotes, Deliveries=$activeDeliveries, Unread=$unreadMessages');
       
       return HomeStats(
         pendingQuotes: pendingQuotes,
-        activeDeliveries: (deliveriesResponse as List).length,
+        activeDeliveries: activeDeliveries,
         totalRequests: totalRequests,
         unreadMessages: unreadMessages,
       );
@@ -238,16 +283,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final supabase = Supabase.instance.client;
       final activities = <RecentActivity>[];
       
-      // BUG FIX: Use mechanic_id (not user_id) to match database schema
-      // Get recent requests from part_requests_with_counts view for richer data
-      final requests = await supabase
-          .from('part_requests_with_counts')
-          .select('id, part_name, status, created_at, offer_count')
-          .eq('mechanic_id', userId)
-          .order('created_at', ascending: false)
-          .limit(3);
+      // Try view first, fallback to direct table
+      List<dynamic> requests = [];
+      try {
+        requests = await supabase
+            .from('part_requests_with_counts')
+            .select('id, part_name, status, created_at, offer_count')
+            .eq('mechanic_id', userId)
+            .order('created_at', ascending: false)
+            .limit(3);
+      } catch (e) {
+        debugPrint('⚠️ [RecentActivity] View failed, using fallback: $e');
+        requests = await supabase
+            .from('part_requests')
+            .select('id, part_name, status, created_at')
+            .eq('mechanic_id', userId)
+            .order('created_at', ascending: false)
+            .limit(3);
+      }
       
-      for (final req in (requests as List)) {
+      for (final req in requests) {
         final offerCount = req['offer_count'] as int? ?? 0;
         activities.add(RecentActivity(
           id: req['id'],
@@ -255,32 +310,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: req['part_name'] ?? 'Part Request',
           subtitle: offerCount > 0 
               ? '$offerCount quote${offerCount > 1 ? 's' : ''} received'
-              : 'Waiting for quotes',
+              : 'Status: ${req['status'] ?? 'pending'}',
           timestamp: DateTime.parse(req['created_at']),
           status: req['status'],
         ));
       }
       
-      // BUG FIX: Use mechanic_id for offers join query
-      final offers = await supabase
-          .from('offers')
-          .select('id, price_cents, status, created_at, shops(name), part_requests!inner(mechanic_id, part_name)')
-          .eq('part_requests.mechanic_id', userId)
-          .order('created_at', ascending: false)
-          .limit(3);
-      
-      for (final offer in (offers as List)) {
-        final priceCents = offer['price_cents'] as int? ?? 0;
-        final priceRands = (priceCents / 100).toStringAsFixed(0);
-        final shopName = offer['shops']?['name'] ?? 'Shop';
-        activities.add(RecentActivity(
-          id: offer['id'],
-          type: 'quote',
-          title: 'Quote: R$priceRands from $shopName',
-          subtitle: offer['part_requests']?['part_name'] ?? 'Part',
-          timestamp: DateTime.parse(offer['created_at']),
-          status: offer['status'],
-        ));
+      // Try to get recent offers (may fail due to RLS or schema differences)
+      try {
+        final offers = await supabase
+            .from('offers')
+            .select('id, price_cents, status, created_at, shops(name), part_requests!inner(mechanic_id, part_name)')
+            .eq('part_requests.mechanic_id', userId)
+            .order('created_at', ascending: false)
+            .limit(3);
+        
+        for (final offer in (offers as List)) {
+          final priceCents = offer['price_cents'] as int? ?? 0;
+          final priceRands = (priceCents / 100).toStringAsFixed(0);
+          final shopName = offer['shops']?['name'] ?? 'Shop';
+          activities.add(RecentActivity(
+            id: offer['id'],
+            type: 'quote',
+            title: 'Quote: R$priceRands from $shopName',
+            subtitle: offer['part_requests']?['part_name'] ?? 'Part',
+            timestamp: DateTime.parse(offer['created_at']),
+            status: offer['status'],
+          ));
+        }
+      } catch (e) {
+        debugPrint('⚠️ [RecentActivity] Offers query failed: $e');
+        // Try simpler offers query without joins
+        try {
+          final simpleOffers = await supabase
+              .from('offers')
+              .select('id, price_cents, status, created_at, request_id')
+              .order('created_at', ascending: false)
+              .limit(3);
+          
+          for (final offer in (simpleOffers as List)) {
+            final priceCents = offer['price_cents'] as int? ?? 0;
+            final priceRands = (priceCents / 100).toStringAsFixed(0);
+            activities.add(RecentActivity(
+              id: offer['id'],
+              type: 'quote',
+              title: 'Quote: R$priceRands',
+              subtitle: 'New quote received',
+              timestamp: DateTime.parse(offer['created_at']),
+              status: offer['status'],
+            ));
+          }
+        } catch (_) {}
       }
       
       // Sort by timestamp
