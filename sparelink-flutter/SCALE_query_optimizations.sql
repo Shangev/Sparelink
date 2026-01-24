@@ -149,7 +149,7 @@ BEGIN
     RETURN QUERY
     SELECT DISTINCT ON (rcm.request_id, rcm.shop_id)
         (rcm.request_id || ':' || rcm.shop_id) as chat_key,
-        rcm.text as message_text,
+        rcm.content as message_text,
         rcm.sent_at,
         rcm.sender_id,
         rcm.is_read
