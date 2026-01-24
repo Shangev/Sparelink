@@ -1005,7 +1005,7 @@ class SupabaseService {
       // Query request_chat_messages directly
       final response = await _client
           .from('request_chat_messages')
-          .select('text, sent_at, sender_id, is_read')
+          .select('content, sent_at, sender_id, is_read')
           .eq('request_id', requestId)
           .eq('shop_id', shopId)
           .order('sent_at', ascending: false)
@@ -1013,7 +1013,7 @@ class SupabaseService {
           .maybeSingle();
       
       if (response != null) {
-        debugPrint('📬 [getLastMessageForChat] Found message: ${response['text']?.toString().substring(0, 20) ?? 'null'}...');
+        debugPrint('📬 [getLastMessageForChat] Found message: ${response['content']?.toString().substring(0, 20) ?? 'null'}...');
         return response;
       }
     } catch (e) {
@@ -1033,7 +1033,7 @@ class SupabaseService {
       
       final response = await _client
           .from(SupabaseConstants.messagesTable)
-          .select('text, sent_at, sender_id, is_read')
+          .select('content, sent_at, sender_id, is_read')
           .eq('conversation_id', conversation['id'])
           .order('sent_at', ascending: false)
           .limit(1)

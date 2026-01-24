@@ -185,7 +185,7 @@ class _ChatDetailPanelState extends ConsumerState<ChatDetailPanel> {
         'request_id': requestId,
         'shop_id': shopId,
         'sender_id': _currentUserId,
-        'text': text,
+        'content': text,
         'sent_at': DateTime.now().toUtc().toIso8601String(),
         'is_read': false,
       });
@@ -366,7 +366,7 @@ class _ChatDetailPanelState extends ConsumerState<ChatDetailPanel> {
   }
   
   Widget _buildMessageBubble(Map<String, dynamic> message, bool isMe, int index) {
-    final text = message['text'] as String? ?? '';
+    final text = message['content'] as String? ?? '';
     final sentAt = message['sent_at'] as String?;
     final isRead = message['is_read'] as bool? ?? false;
     final isHovered = _hoveredMessageIndex == index;

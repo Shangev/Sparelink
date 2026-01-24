@@ -239,14 +239,14 @@ export default function ChatsPage() {
                 // Get last message
                 const { data: lastMsg } = await supabase
                   .from("messages")
-                  .select("text, sent_at, sender_id, is_read")
+                  .select("content, sent_at, sender_id, is_read")
                   .eq("conversation_id", conversation.id)
                   .order("sent_at", { ascending: false })
                   .limit(1)
                   .single()
                 
                 if (lastMsg) {
-                  enrichedChat.last_message_text = lastMsg.text
+                  enrichedChat.last_message_text = lastMsg.content
                   enrichedChat.last_message_at = lastMsg.sent_at
                   enrichedChat.last_message_is_mine = lastMsg.sender_id === user.id
                   enrichedChat.last_message_is_read = lastMsg.is_read || false

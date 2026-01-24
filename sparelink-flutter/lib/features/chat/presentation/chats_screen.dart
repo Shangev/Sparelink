@@ -136,7 +136,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           if (requestId != null && shopId != null) {
             final lastMsg = await supabaseService.getLastMessageForChat(requestId, shopId);
             if (lastMsg != null) {
-              lastMessageText = lastMsg['text'] as String?;
+              lastMessageText = lastMsg['content'] as String?;
               lastMessageAt = lastMsg['sent_at'] as String?;
               lastMessageIsMine = lastMsg['sender_id'] == _currentUserId;
               lastMessageIsRead = lastMsg['is_read'] as bool? ?? false;
@@ -363,7 +363,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     // For traditional conversations
     final messages = chat['messages'] as List?;
     if (messages != null && messages.isNotEmpty) {
-      return messages.last['text'] ?? 'No messages yet';
+      return messages.last['content'] ?? 'No messages yet';
     }
     return 'No messages yet';
   }
