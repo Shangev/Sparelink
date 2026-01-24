@@ -232,16 +232,38 @@ export default function OrdersPage() {
     }
   }
 
+  // CS-16 FIX: Update order status with transition validation error handling
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    // Find the order to check current status
+    const order = orders.find(o => o.id === orderId)
+    if (!order) return
+    
+    // Client-side validation (CS-16)
+    if (!canTransitionTo(order.status, newStatus)) {
+      alert(`Invalid status transition: Cannot change from "${getStatusLabel(order.status)}" to "${getStatusLabel(newStatus)}"`)
+      return
+    }
+    
     try {
-      await supabase
+      const { error } = await supabase
         .from("orders")
         .update({ status: newStatus })
         .eq("id", orderId)
 
-      setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o))
+      if (error) {
+        // CS-16: Handle database trigger errors
+        if (error.message?.includes('INVALID_STATUS_TRANSITION') || error.code === 'P0010') {
+          alert(`Invalid status transition. The database rejected this change.`)
+        } else {
+          alert(`Failed to update order: ${error.message}`)
+        }
+        return
+      }
+
+      setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus as OrderStatusType } : o))
     } catch (error) {
       console.error("Error updating order:", error)
+      alert("Failed to update order status")
     }
   }
 
@@ -267,25 +289,57 @@ export default function OrdersPage() {
     }
   }
 
-  // Batch update order status
+  // CS-16 FIX: Batch update order status with transition validation
   const handleBatchStatusUpdate = async (newStatus: string) => {
     if (selectedOrders.size === 0) return
     
+    // Filter orders that can transition to the new status (CS-16)
+    const validOrders = Array.from(selectedOrders).filter(orderId => {
+      const order = orders.find(o => o.id === orderId)
+      return order && canTransitionTo(order.status, newStatus)
+    })
+    
+    if (validOrders.length === 0) {
+      alert(`None of the selected orders can transition to "${getStatusLabel(newStatus)}"`)
+      return
+    }
+    
+    if (validOrders.length < selectedOrders.size) {
+      const skipped = selectedOrders.size - validOrders.length
+      if (!confirm(`${skipped} order(s) cannot transition to "${getStatusLabel(newStatus)}" and will be skipped. Continue with ${validOrders.length} order(s)?`)) {
+        return
+      }
+    }
+    
     setBatchUpdating(true)
+    let successCount = 0
+    let failCount = 0
+    
     try {
-      // Update all selected orders
-      for (const orderId of selectedOrders) {
-        await supabase
+      // Update only valid orders
+      for (const orderId of validOrders) {
+        const { error } = await supabase
           .from("orders")
           .update({ status: newStatus })
           .eq("id", orderId)
+        
+        if (error) {
+          console.error(`Failed to update order ${orderId}:`, error)
+          failCount++
+        } else {
+          successCount++
+        }
       }
 
-      // Update local state
+      // Update local state for successful updates
       setOrders(orders.map(o => 
-        selectedOrders.has(o.id) ? { ...o, status: newStatus } : o
+        validOrders.includes(o.id) && !failCount ? { ...o, status: newStatus as OrderStatusType } : o
       ))
       setSelectedOrders(new Set())
+      
+      if (failCount > 0) {
+        alert(`Updated ${successCount} orders. ${failCount} failed due to validation errors.`)
+      }
     } catch (error) {
       console.error("Error batch updating orders:", error)
       alert("Failed to update some orders")
@@ -792,21 +846,36 @@ export default function OrdersPage() {
                   {getPaymentBadge(order.payment_status)}
                 </div>
 
-                {/* Status Buttons (CS-15 FIX) - Show available transitions */}
-                <div className="flex gap-2 flex-wrap">
-                  {statusOptions.map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => updateOrderStatus(order.id, status)}
-                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                        order.status === status
-                          ? "bg-accent text-white"
-                          : "bg-[#2d2d2d] text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      {getStatusLabel(status)}
-                    </button>
-                  ))}
+                {/* Status Buttons (CS-16 FIX) - Only show valid transitions */}
+                <div className="flex gap-2 flex-wrap items-center">
+                  {/* Current status indicator */}
+                  <span className="px-3 py-1.5 rounded-lg text-sm bg-accent text-white">
+                    {getStatusLabel(order.status)}
+                  </span>
+                  
+                  {/* Valid transition buttons */}
+                  {getAvailableStatuses(order.status).length > 0 ? (
+                    <>
+                      <span className="text-gray-500 text-sm">→</span>
+                      {getAvailableStatuses(order.status).map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => updateOrderStatus(order.id, status)}
+                          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                            status === 'cancelled'
+                              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                              : "bg-[#2d2d2d] text-gray-400 hover:text-white hover:bg-[#3d3d3d]"
+                          }`}
+                        >
+                          {getStatusLabel(status)}
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    <span className="text-gray-500 text-sm italic">
+                      {order.status === 'delivered' ? '✓ Completed' : order.status === 'cancelled' ? '✗ Cancelled' : ''}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

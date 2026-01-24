@@ -197,31 +197,49 @@ class Offer {
     return '1 week+';
   }
 
-  factory Offer.fromJson(Map<String, dynamic> json) {
-    // Handle both formats: price_cents (int) or part_price (decimal in Rands)
-    int priceCents;
-    if (json['price_cents'] != null) {
-      priceCents = json['price_cents'];
-    } else if (json['part_price'] != null) {
-      priceCents = ((json['part_price'] as num) * 100).round();
-    } else if (json['total_price'] != null) {
-      // If only total_price, use that minus delivery
-      final total = (json['total_price'] as num) * 100;
-      final delivery = json['delivery_fee'] != null ? ((json['delivery_fee'] as num) * 100).round() : 14000;
-      priceCents = (total - delivery).round();
-    } else {
-      priceCents = 0;
+  /// CS-14 FIX: Standardized price parsing helper
+  /// Parses cents from various field names, handling both cents (int) and Rands (decimal)
+  static int _parseCents(Map<String, dynamic> json, String centsKey, [String? randsKey, String? fallbackKey, int defaultValue = 0]) {
+    // Try cents field first (preferred format)
+    if (json[centsKey] != null) {
+      final value = json[centsKey];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
     }
     
-    // Handle delivery fee
-    int deliveryFeeCents;
-    if (json['delivery_fee_cents'] != null) {
-      deliveryFeeCents = json['delivery_fee_cents'];
-    } else if (json['delivery_fee'] != null) {
-      deliveryFeeCents = ((json['delivery_fee'] as num) * 100).round();
-    } else {
-      deliveryFeeCents = 14000; // Default R140
+    // Try Rands field and convert to cents
+    if (randsKey != null && json[randsKey] != null) {
+      final value = json[randsKey];
+      if (value is num) return (value * 100).round();
     }
+    
+    // Try fallback field
+    if (fallbackKey != null && json[fallbackKey] != null) {
+      final value = json[fallbackKey];
+      if (value is num) {
+        // Heuristic: if value > 1000, assume it's already cents; otherwise Rands
+        return value > 1000 ? value.toInt() : (value * 100).round();
+      }
+    }
+    
+    return defaultValue;
+  }
+
+  /// CS-14 FIX: Simplified price parsing using standardized helper
+  factory Offer.fromJson(Map<String, dynamic> json) {
+    // CS-14 FIX: Use standardized price parsing
+    // Priority: price_cents > part_price > total_price (minus delivery)
+    int priceCents = _parseCents(json, 'price_cents', 'part_price', 'price', 0);
+    
+    // If still 0 and total_price exists, calculate from total
+    if (priceCents == 0 && json['total_price'] != null) {
+      final totalCents = _parseCents(json, 'total_cents', 'total_price', null, 0);
+      final deliveryCents = _parseCents(json, 'delivery_fee_cents', 'delivery_fee', null, 14000);
+      priceCents = (totalCents - deliveryCents).clamp(0, totalCents);
+    }
+    
+    // CS-14 FIX: Standardized delivery fee parsing
+    int deliveryFeeCents = _parseCents(json, 'delivery_fee_cents', 'delivery_fee', null, 14000);
     
     // Handle ETA: delivery_days to minutes (1 day = 1440 min, but we'll show as hours)
     int? etaMinutes;
@@ -233,12 +251,11 @@ class Offer {
       etaMinutes = days * 24 * 60; // days to minutes
     }
     
-    // Handle counter offer cents
+    // CS-14 FIX: Standardized counter offer parsing
     int? counterOfferCents;
-    if (json['counter_offer_cents'] != null) {
-      counterOfferCents = json['counter_offer_cents'];
-    } else if (json['counter_offer_price'] != null) {
-      counterOfferCents = ((json['counter_offer_price'] as num) * 100).round();
+    final parsedCounterOffer = _parseCents(json, 'counter_offer_cents', 'counter_offer_price', null, -1);
+    if (parsedCounterOffer >= 0) {
+      counterOfferCents = parsedCounterOffer;
     }
     
     // Handle nested shop data (from joins)
@@ -619,13 +636,18 @@ class Order {
 enum RequestStatus { pending, offered, accepted, fulfilled, expired, cancelled }
 
 /// Represents a part request from a user/mechanic
+/// 
+/// CS-13 FIX: Separated partName and partCategory fields
+/// - partName: Specific part name (e.g., "Front Brake Pads")
+/// - partCategory: General category (e.g., "Brakes")
 class PartRequest {
   final String id;
   final String mechanicId;
   final String? vehicleMake;
   final String? vehicleModel;
   final int? vehicleYear;
-  final String? partName;
+  final String? partName;      // Specific part name (CS-13 FIX)
+  final String? partCategory;  // General category (CS-13 FIX)
   final String? description;
   final String? imageUrl;  // Primary part image URL (stored in image_url column)
   final String? suburb;    // Location suburb for shop matching
@@ -643,6 +665,7 @@ class PartRequest {
     this.vehicleModel,
     this.vehicleYear,
     this.partName,
+    this.partCategory,  // CS-13 FIX: Added separate field
     this.description,
     this.imageUrl,
     this.suburb,
@@ -653,6 +676,23 @@ class PartRequest {
     required this.createdAt,
     this.expiresAt,
   });
+  
+  /// Display name: prefers specific part name, falls back to category (CS-13 FIX)
+  String get displayName {
+    if (partName != null && partName!.isNotEmpty) return partName!;
+    if (partCategory != null && partCategory!.isNotEmpty) return partCategory!;
+    return 'Part Request';
+  }
+  
+  /// Full part description for detailed views (CS-13 FIX)
+  String get fullPartDescription {
+    final parts = <String>[];
+    if (partName != null && partName!.isNotEmpty) parts.add(partName!);
+    if (partCategory != null && partCategory!.isNotEmpty && partCategory != partName) {
+      parts.add('($partCategory)');
+    }
+    return parts.isNotEmpty ? parts.join(' ') : 'Part Request';
+  }
 
   /// Vehicle display string
   String get vehicleDisplay {
@@ -695,6 +735,7 @@ class PartRequest {
     return '${diff.inDays}d ago';
   }
 
+  /// CS-13 FIX: Parse both part_name and part_category as separate fields
   factory PartRequest.fromJson(Map<String, dynamic> json) {
     // Handle image URL - check both image_url (new) and image_urls (legacy)
     String? imageUrl = json['image_url'];
@@ -705,13 +746,20 @@ class PartRequest {
       }
     }
     
+    // CS-13 FIX: Parse part_name and part_category separately
+    // part_name = specific part (e.g., "Front Brake Pads")
+    // part_category = general category (e.g., "Brakes")
+    final partName = json['part_name'] as String?;
+    final partCategory = json['part_category'] as String?;
+    
     return PartRequest(
-      id: json['id'],
-      mechanicId: json['mechanic_id'],
+      id: json['id'] ?? '',
+      mechanicId: json['mechanic_id'] ?? '',
       vehicleMake: json['vehicle_make'],
       vehicleModel: json['vehicle_model'],
       vehicleYear: json['vehicle_year'],
-      partName: json['part_name'] ?? json['part_category'],
+      partName: partName,           // CS-13 FIX: Specific part name only
+      partCategory: partCategory,   // CS-13 FIX: Category only
       description: json['description'],
       imageUrl: imageUrl,
       suburb: json['suburb'],
@@ -720,10 +768,10 @@ class PartRequest {
       shopCount: json['shop_count'] ?? 0,
       quotedCount: json['quoted_count'] ?? 0,
       createdAt: json['created_at'] != null 
-          ? DateTime.parse(json['created_at']) 
+          ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
           : DateTime.now(),
       expiresAt: json['expires_at'] != null 
-          ? DateTime.parse(json['expires_at']) 
+          ? DateTime.tryParse(json['expires_at'])
           : null,
     );
   }
@@ -735,7 +783,8 @@ class PartRequest {
       'vehicle_make': vehicleMake,
       'vehicle_model': vehicleModel,
       'vehicle_year': vehicleYear,
-      'part_name': partName,
+      'part_name': partName,           // CS-13 FIX: Specific part name
+      'part_category': partCategory,   // CS-13 FIX: Category
       'description': description,
       'image_url': imageUrl,
       'suburb': suburb,
