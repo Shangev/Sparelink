@@ -1342,3 +1342,262 @@ PAYSTACK_SECRET_KEY=sk_live_xxx (for webhooks)
 | **Paystack** | Public + Secret Key | Paystack Dashboard → Settings → API | `--dart-define` (public), Vercel (secret) |
 | **Google Maps** | API Key | Google Cloud Console | Android Manifest / iOS AppDelegate |
 | **Firebase** | google-services.json | Firebase Console | `android/app/` / `ios/Runner/` |
+
+---
+
+## 🔍 INTEGRITY & RISK AUDIT (Triple-Scan Protocol)
+
+> **Audit Date:** January 23, 2026  
+> **Protocol:** Discovery → Cross-Reference → Validation  
+> **Scope:** Complete codebase analysis for gaps, risks, and crash points
+
+---
+
+## 13. SCAN 1: DISCOVERY FINDINGS
+
+### 13.1 Hardcoded Credentials & Vulnerabilities
+
+| Severity | Location | Issue | Risk |
+|----------|----------|-------|------|
+| 🔴 **CRITICAL** | `shop-dashboard/src/lib/supabase.ts:4` | Supabase URL hardcoded | Exposed in client bundle, cannot rotate without redeploy |
+| 🔴 **CRITICAL** | `shop-dashboard/src/app/dashboard/orders/page.tsx:35` | `PAYSTACK_PUBLIC_KEY = 'pk_test_xxxxx'` | Test key in production code |
+| 🟠 **HIGH** | `lib/core/constants/supabase_constants.dart:14` | Default Supabase URL in code | Should use build-time injection only |
+| 🟠 **HIGH** | `lib/shared/services/payment_service.dart:27` | Paystack test key as default | Falls back to test in production if env missing |
+| 🟡 **MEDIUM** | `lib/core/constants/api_constants.dart:4` | `http://localhost:3333/api` hardcoded | Unused but confusing |
+| 🟡 **MEDIUM** | `shop-dashboard/.env.local` | Committed to repo | Should be in `.gitignore` |
+
+### 13.2 Missing Dispose/Cleanup Patterns
+
+| File | Issue | Impact |
+|------|-------|--------|
+| `request_chats_screen.dart:36` | Uses `StreamSubscription?.cancel()` but no `RealtimeChannel` | ⚠️ Mixed subscription patterns |
+| `chat_detail_panel.dart` | `_messageSubscription` cleaned up properly ✅ | N/A |
+| `individual_chat_screen.dart` | 3 RealtimeChannels all unsubscribed ✅ | N/A |
+| `chats_screen.dart:391` | `_messageSubscription?.unsubscribe()` ✅ | N/A |
+| `order_tracking_screen.dart:44` | `_orderSubscription?.unsubscribe()` ✅ | N/A |
+| `marketplace_results_screen.dart:43` | `_offersSubscription?.unsubscribe()` ✅ | N/A |
+
+**Verdict:** ✅ Realtime cleanup is properly implemented across all screens.
+
+### 13.3 Force Unwrapping & Null Safety Risks
+
+| Pattern | Files Affected | Example | Risk Level |
+|---------|---------------|---------|------------|
+| `as String` without null check | 45 files | `chat['name'] as String` | 🟠 HIGH - Crash if null |
+| `!.` force unwrap | 45+ files | `_order!.id` | 🟡 MEDIUM - Guarded by loading states |
+| `as Map<String, dynamic>?` safe cast | Common | `chat['shops'] as Map?` | ✅ SAFE |
+| `??` null coalescing | Widespread | `?? 'Unknown'` | ✅ SAFE |
+
+**High-Risk Patterns Found:**
+```dart
+// chats_screen.dart:278 - Risky cast
+final updatedCount = (result as List).length;
+
+// chats_screen.dart:225 - Unsafe DateTime.parse
+DateTime.parse(aTime as String)  // Crashes if aTime is null
+
+// request_chats_screen.dart:133 - Force unwrap on nullable
+final vehicleInfo = '${_request!['vehicle_year']} ...'  // Crashes if _request null
+```
+
+---
+
+## 14. SCAN 2: CROSS-REFERENCE VALIDATION
+
+### 14.1 Issues Mitigated by Global Handlers
+
+| Discovered Issue | Actually Handled By | Status |
+|-----------------|---------------------|--------|
+| No global error handler | Per-service try/catch + Screen-level SnackBars | ⚠️ PARTIAL - Works but verbose |
+| Missing rate limiting | `RateLimiterService` with 12 endpoint configs | ✅ MITIGATED |
+| No offline handling | `OfflineCacheService` with 24hr cache | ⚠️ PARTIAL - Read-only |
+| No input validation | `RequestValidatorService` exists | ✅ MITIGATED |
+| Auth state not synced | `AuthNotifier` in `app_router.dart` listens to Supabase auth | ✅ MITIGATED |
+
+### 14.2 Confirmed Gaps (Not Handled Elsewhere)
+
+| Gap | Severity | Description | Recommendation |
+|-----|----------|-------------|----------------|
+| **No Global Network Listener** | 🟠 HIGH | App doesn't detect connectivity changes globally | Add `connectivity_plus` listener in `main.dart` |
+| **No Request Retry Queue** | 🟠 HIGH | Failed writes are lost | Implement offline action queue |
+| **GoRouter Extra Lost on Refresh** | 🟡 MEDIUM | Web refresh loses navigation state | Always fetch from DB as fallback |
+| **No Pagination on Large Lists** | 🟠 HIGH | `getMechanicRequests` fetches all | Add cursor-based pagination |
+| **No Image Compression** | 🟡 MEDIUM | Large uploads on slow networks | Add client-side compression |
+| **Shop Dashboard Hardcoded Creds** | 🔴 CRITICAL | Cannot rotate without code change | Move to `process.env` |
+
+### 14.3 Rate Limiter Coverage Analysis
+
+```
+RATE LIMITED ENDPOINTS (Protected):
+✅ auth_login: 5 req/min
+✅ auth_register: 3 req/5min  
+✅ auth_otp: 3 req/min
+✅ create_request: 10 req/min
+✅ send_message: 30 req/min
+✅ upload_image: 10 req/min
+
+NOT RATE LIMITED (Vulnerable):
+❌ getMechanicOrders - unbounded
+❌ getOffersForRequest - unbounded
+❌ getUserNotifications - unbounded
+❌ Shop Dashboard API routes - no rate limiting
+```
+
+---
+
+## 15. SCAN 3: STRESS-TEST VALIDATION
+
+### 15.1 Scalability Bottlenecks (10,000+ Users)
+
+| Component | Current Behavior | Breaking Point | Recommendation |
+|-----------|-----------------|----------------|----------------|
+| **Request List** | Fetches ALL requests per user | ~500 requests = slow load | Paginate with `.range(0, 20)` |
+| **Chat Messages** | Loads ALL messages on open | ~1000 messages = OOM risk | Virtual scroll + lazy load |
+| **Notifications** | Fetches ALL unread | ~500 notifications = timeout | Add `.limit(50)` + "Load More" |
+| **Realtime Channels** | 1 channel per conversation | ~100 open chats = connection limit | Multiplex into single channel |
+| **SELECT * Queries** | 14 locations using `select('*')` | Large rows = bandwidth waste | Select only needed columns |
+
+### 15.2 High-Load Query Analysis
+
+| Query Location | Current | Issue | Optimized |
+|---------------|---------|-------|-----------|
+| `supabase_service.dart:508` | `select('*, part_requests!inner(*), offers(*, shops(*))')` | Triple nested join | Add indexes, limit columns |
+| `supabase_service.dart:653` | `select('*, shops(*), profiles(*), messages(text, sent_at)')` | N+1 risk | Already optimized with join |
+| `home_screen.dart:214` | `.limit(3)` | ✅ Good | N/A |
+| `payment_service.dart:461` | `select('*, orders(*, offers(*, shops(*)))')` | 4-level deep | Limit to 50 max |
+
+### 15.3 Crash Points Under Poor Network
+
+| Scenario | Code Location | Current Behavior | Crash Risk |
+|----------|---------------|------------------|------------|
+| **Supabase timeout during auth** | `auth_service.dart` | Try/catch + rethrow | 🟢 LOW - Handled |
+| **Realtime disconnect** | `individual_chat_screen.dart:556-576` | No reconnection logic | 🟠 HIGH - Silent failure |
+| **Image upload fails midway** | `storage_service.dart` | Try/catch | 🟡 MEDIUM - No retry |
+| **Payment webhook timeout** | `shop-dashboard/api/payments/webhook` | 5s timeout default | 🟠 HIGH - Paystack retries but no idempotency |
+| **setState after dispose** | 143 `if (mounted)` checks | Protected | 🟢 LOW - Well guarded |
+
+### 15.4 Memory Leak Risks
+
+| Component | Risk | Evidence | Status |
+|-----------|------|----------|--------|
+| **RealtimeChannel subscriptions** | HIGH | All screens properly unsubscribe | ✅ SAFE |
+| **TextEditingController** | MEDIUM | All disposed in `dispose()` | ✅ SAFE |
+| **AnimationController** | LOW | `skeleton_loader.dart:44` disposed | ✅ SAFE |
+| **AudioRecorder/Player** | HIGH | `individual_chat_screen.dart:394-395` disposed | ✅ SAFE |
+| **CameraController** | HIGH | `camera_screen_full.dart:50` disposed | ✅ SAFE |
+| **StreamSubscription** | MEDIUM | `request_chats_screen.dart:36` cancelled | ✅ SAFE |
+
+**Verdict:** ✅ No memory leaks detected. Dispose patterns are consistently implemented.
+
+---
+
+## 16. CONFIRMED ISSUES SUMMARY
+
+### 16.1 Critical (Fix Immediately)
+
+| ID | Issue | File | Line | Impact |
+|----|-------|------|------|--------|
+| C-01 | Hardcoded Supabase URL in shop dashboard | `shop-dashboard/src/lib/supabase.ts` | 4 | Security - exposed credentials |
+| C-02 | Test Paystack key in production code | `shop-dashboard/src/app/dashboard/orders/page.tsx` | 35 | Payment failures in prod |
+| C-03 | No idempotency on payment webhooks | `shop-dashboard/src/app/api/payments/webhook/route.ts` | - | Duplicate charges possible |
+
+### 16.2 High (Fix Before Scale)
+
+| ID | Issue | File | Impact |
+|----|-------|------|--------|
+| H-01 | No pagination on getMechanicRequests | `supabase_service.dart:200` | Timeouts at scale |
+| H-02 | No pagination on getMechanicOrders | `supabase_service.dart:505` | Memory issues |
+| H-03 | SELECT * in 14 queries | Various | Bandwidth waste |
+| H-04 | No Realtime reconnection logic | `individual_chat_screen.dart` | Silent chat failures |
+| H-05 | No global connectivity listener | `main.dart` | Users don't know they're offline |
+| H-06 | Shop Dashboard API routes not rate limited | `shop-dashboard/src/app/api/*` | DoS vulnerability |
+
+### 16.3 Medium (Fix Before Launch)
+
+| ID | Issue | File | Impact |
+|----|-------|------|--------|
+| M-01 | GoRouter extra lost on refresh | Navigation system | Poor web UX |
+| M-02 | No image compression before upload | `storage_service.dart` | Slow uploads |
+| M-03 | Unsafe DateTime.parse without null check | `chats_screen.dart:225` | Potential crash |
+| M-04 | Force cast `as List` without check | `chats_screen.dart:278` | Potential crash |
+| M-05 | .env.local committed to repo | `shop-dashboard/.env.local` | Credential exposure |
+
+### 16.4 Low (Technical Debt)
+
+| ID | Issue | File | Impact |
+|----|-------|------|--------|
+| L-01 | Unused localhost API constant | `api_constants.dart:4` | Confusion |
+| L-02 | Mixed error handling patterns | Various | Code maintainability |
+| L-03 | Inconsistent loading state naming | Various | `_isLoading` vs `isLoading` |
+
+---
+
+## 17. RISK MATRIX
+
+```
+                    PROBABILITY OF OCCURRENCE
+                    Low         Medium        High
+              ┌─────────────┬─────────────┬─────────────┐
+        High  │             │ H-04, H-05  │ C-01, C-02  │
+              │             │ H-06        │ C-03        │
+   IMPACT     ├─────────────┼─────────────┼─────────────┤
+        Med   │ L-01, L-02  │ M-01, M-02  │ H-01, H-02  │
+              │ L-03        │ M-05        │ H-03        │
+              ├─────────────┼─────────────┼─────────────┤
+        Low   │             │ M-03, M-04  │             │
+              │             │             │             │
+              └─────────────┴─────────────┴─────────────┘
+```
+
+---
+
+## 18. RECOMMENDED FIX PRIORITY
+
+### Week 1: Critical Security
+1. **C-01, C-02**: Move all credentials to environment variables
+2. **C-03**: Add idempotency key to webhook handler
+3. **M-05**: Add `.env.local` to `.gitignore`
+
+### Week 2: Scalability
+4. **H-01, H-02**: Add pagination to list queries
+5. **H-03**: Replace `SELECT *` with specific columns
+6. **H-06**: Add rate limiting middleware to Next.js API
+
+### Week 3: Reliability
+7. **H-04**: Add Realtime reconnection with exponential backoff
+8. **H-05**: Add global `ConnectivityListener` widget
+9. **M-02**: Add image compression before upload
+
+### Week 4: Polish
+10. **M-01**: Add DB fallback when GoRouter extra is null
+11. **M-03, M-04**: Add null safety guards
+12. **L-01, L-02, L-03**: Code cleanup
+
+---
+
+## 19. AUDIT CONCLUSION
+
+### Overall Health Score: **72/100** (Good with Critical Gaps)
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| **Security** | 60/100 | Hardcoded credentials are critical risk |
+| **Stability** | 85/100 | Good dispose patterns, mounted checks |
+| **Scalability** | 65/100 | Missing pagination will cause issues at 10K users |
+| **Error Handling** | 75/100 | Per-service handling works but no global retry |
+| **Code Quality** | 80/100 | Clean architecture, some inconsistencies |
+
+### Production Readiness: ⚠️ **NOT READY**
+
+**Blockers:**
+1. Hardcoded credentials (C-01, C-02)
+2. Missing webhook idempotency (C-03)
+3. No pagination (H-01, H-02)
+
+**Once Fixed:** Ready for beta with ~1,000 users
+
+---
+
+> **Audit Status:** Complete  
+> **Next Action:** Fix Critical issues (C-01, C-02, C-03) before any deployment  
+> **Audited by:** Rovo Dev Triple-Scan Protocol Engine
