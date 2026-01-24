@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { 
+  validateInventoryItem, 
+  isValidUuid, 
+  createValidationErrorResponse,
+  sanitizeText 
+} from '@/lib/validation';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -8,6 +14,12 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  * Inventory CRUD API
  * 
  * Full Create, Read, Update, Delete operations for shop inventory.
+ * 
+ * Pass 4 Security Hardening:
+ * - Server-side payload validation
+ * - UUID format validation
+ * - Text sanitization
+ * - Price range validation
  */
 
 // GET - List inventory items
@@ -35,8 +47,9 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
 
-    if (!shopId) {
-      return NextResponse.json({ error: 'Missing shop_id' }, { status: 400 });
+    // Pass 4: Validate shop_id is a valid UUID
+    if (!shopId || !isValidUuid(shopId)) {
+      return NextResponse.json({ error: 'Invalid or missing shop_id' }, { status: 400 });
     }
 
     let query = supabase
@@ -103,6 +116,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    
+    // Pass 4: Server-side payload validation
+    const validation = validateInventoryItem(body);
+    if (!validation.isValid) {
+      return NextResponse.json(createValidationErrorResponse(validation), { status: 400 });
+    }
+    
     const {
       shop_id,
       part_name,
@@ -119,22 +139,19 @@ export async function POST(request: NextRequest) {
       supplier,
       location
     } = body;
-
-    if (!shop_id || !part_name || !category) {
-      return NextResponse.json(
-        { error: 'Missing required fields: shop_id, part_name, category' },
-        { status: 400 }
-      );
-    }
+    
+    // Sanitize text fields to prevent XSS
+    const sanitizedPartName = sanitizeText(part_name);
+    const sanitizedDescription = description ? sanitizeText(description) : null;
 
     const { data, error } = await supabase
       .from('inventory')
       .insert({
         shop_id,
-        part_name,
+        part_name: sanitizedPartName,  // Pass 4: Use sanitized value
         part_number: part_number || null,
         category,
-        description: description || null,
+        description: sanitizedDescription,  // Pass 4: Use sanitized value
         cost_price: cost_price || 0,
         selling_price: selling_price || 0,
         stock_quantity: stock_quantity || 0,
