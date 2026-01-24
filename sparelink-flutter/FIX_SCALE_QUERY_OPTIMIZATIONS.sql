@@ -7,9 +7,31 @@
 DROP VIEW IF EXISTS part_requests_with_counts CASCADE;
 
 -- 2. Recreate the view with correct structure
+-- NOTE: part_requests table may already have offer_count column, so we use COALESCE
+-- to prefer the computed count over the stored value, and exclude duplicates
 CREATE OR REPLACE VIEW part_requests_with_counts AS
 SELECT 
-    pr.*,
+    pr.id,
+    pr.mechanic_id,
+    pr.vehicle_make,
+    pr.vehicle_model,
+    pr.vehicle_year,
+    pr.part_name,
+    pr.part_category,
+    pr.description,
+    pr.image_url,
+    pr.suburb,
+    pr.city,
+    pr.status,
+    pr.created_at,
+    pr.updated_at,
+    pr.expires_at,
+    pr.accepted_shop_id,
+    pr.budget_min,
+    pr.budget_max,
+    pr.urgency,
+    pr.part_number,
+    -- Computed counts (these override any existing columns)
     COALESCE(offer_counts.count, 0)::INTEGER as offer_count,
     COALESCE(chat_counts.total, 0)::INTEGER as shop_count,
     COALESCE(chat_counts.quoted, 0)::INTEGER as quoted_count
