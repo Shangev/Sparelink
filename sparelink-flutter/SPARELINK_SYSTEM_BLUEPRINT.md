@@ -3947,3 +3947,345 @@ ON part_requests(mechanic_id, status);
 > **Auditor:** Rovo Dev Database Forensics Engine  
 > **Next Review:** Before 50K user milestone
 
+
+---
+
+# PASS 2 PHASE 2: QUERY PERFORMANCE ANALYSIS
+
+> **Phase 2 Start:** January 24, 2026  
+> **Objective:** Identify N+1 queries, missing joins, and performance bottlenecks  
+> **Focus:** Flutter Service Layer & Dashboard API Routes
+
+---
+
+## 39. QUERY PATTERN AUDIT
+
+### 39.1 Flutter Service Query Patterns
+
+| Method | Query Pattern | Tables Hit | Performance Issue |
+|--------|---------------|------------|-------------------|
+| `getMechanicRequests()` | N+1 Loop | `part_requests`, `offers`, `request_chats` | 🔴 **CRITICAL** - Loop for each request |
+| `getOffersForRequest()` | JOIN | `offers`, `shops` | 🟢 OK - Single query with join |
+| `getMechanicOrders()` | JOIN | `orders`, `part_requests`, `offers`, `shops` | 🟢 OK - Proper join |
+| `getUserConversations()` | JOIN | `conversations`, `shops`, `profiles`, `messages` | 🟢 OK - Single query |
+| `getMechanicRequestChats()` | N+1 Potential | `part_requests`, `request_chats`, `shops` | 🟠 **MEDIUM** - Two queries |
+| `getShopsBySuburb()` | Two Queries | `shops` | 🟡 **LOW** - Could combine |
+| `getUnreadCountForChat()` | N+1 Potential | `request_chat_messages` OR `conversations`, `messages` | 🟠 **MEDIUM** - Called per chat |
+| `getLastMessageForChat()` | N+1 Potential | `request_chat_messages` OR `conversations`, `messages` | 🟠 **MEDIUM** - Called per chat |
+
+### 39.2 Critical N+1 Pattern: getMechanicRequests()
+
+**Current Code (Lines 258-301):**
+```dart
+// PROBLEM: Executes 2N+1 queries for N requests
+Future<List<Map<String, dynamic>>> getMechanicRequests(String mechanicId) async {
+  // Query 1: Get all requests
+  final response = await _client
+      .from(SupabaseConstants.partRequestsTable)
+      .select()
+      .eq('mechanic_id', mechanicId)
+      .order('created_at', ascending: false);
+  
+  final requests = List<Map<String, dynamic>>.from(response);
+  
+  // LOOP: For each request, execute 2 more queries!
+  for (var request in requests) {
+    // Query N+1: Get offer count
+    final offersResponse = await _client
+        .from('offers')
+        .select('id')
+        .eq('request_id', request['id']);
+    
+    // Query 2N+1: Get shop/chat count
+    final chatsResponse = await _client
+        .from('request_chats')
+        .select('id, status')
+        .eq('request_id', request['id']);
+    
+    // ... processing
+  }
+  return requests;
+}
+```
+
+**Impact at Scale:**
+- 10 requests = 21 queries
+- 100 requests = 201 queries
+- 1000 requests = 2001 queries (CRITICAL)
+
+### 39.3 Dashboard Query Patterns
+
+| Endpoint/Page | Query Pattern | Tables Hit | Performance Issue |
+|---------------|---------------|------------|-------------------|
+| `requests/page.tsx` | Nested Queries | `shops`, `request_chats`, `part_requests`, `profiles` | 🟠 **MEDIUM** - 3 queries |
+| `analytics/route.ts` | Aggregation | `orders`, `quotes` | 🟢 OK - Efficient aggregation |
+| `orders/page.tsx` | JOIN | `orders`, `part_requests`, `profiles`, `offers`, `shops` | 🟢 OK - Proper join |
+| `customers/route.ts` | Aggregation | `shop_customers`, `orders` | 🟢 OK |
+| `inventory/route.ts` | Simple | `inventory` | 🟢 OK |
+
+---
+
+## 40. QUERY OPTIMIZATION RECOMMENDATIONS
+
+### 40.1 Fix getMechanicRequests() - Priority: CRITICAL
+
+**Optimized Solution using Database View:**
+
+```sql
+-- Create a view that pre-calculates counts
+CREATE OR REPLACE VIEW part_requests_with_counts AS
+SELECT 
+    pr.*,
+    COALESCE(offer_counts.count, 0) as offer_count,
+    COALESCE(chat_counts.total, 0) as shop_count,
+    COALESCE(chat_counts.quoted, 0) as quoted_count
+FROM part_requests pr
+LEFT JOIN (
+    SELECT request_id, COUNT(*) as count
+    FROM offers
+    GROUP BY request_id
+) offer_counts ON offer_counts.request_id = pr.id
+LEFT JOIN (
+    SELECT 
+        request_id, 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status = 'quoted') as quoted
+    FROM request_chats
+    GROUP BY request_id
+) chat_counts ON chat_counts.request_id = pr.id;
+
+-- Grant access
+GRANT SELECT ON part_requests_with_counts TO authenticated;
+```
+
+**Updated Flutter Code:**
+```dart
+Future<List<Map<String, dynamic>>> getMechanicRequests(String mechanicId) async {
+  // Single query using the view!
+  final response = await _client
+      .from('part_requests_with_counts')  // Use the view
+      .select()
+      .eq('mechanic_id', mechanicId)
+      .order('created_at', ascending: false);
+  
+  return List<Map<String, dynamic>>.from(response);
+}
+```
+
+**Result:** 2N+1 queries → 1 query (99.5% reduction at 100 requests)
+
+### 40.2 Fix Chat Unread Count Batching - Priority: HIGH
+
+**Current Problem:** `getUnreadCountForChat()` called in a loop for each chat.
+
+**Solution: Batch Query**
+```dart
+/// Get unread counts for multiple chats in a single query
+Future<Map<String, int>> getUnreadCountsForChats(
+  List<Map<String, String>> chats, // [{request_id, shop_id}]
+  String userId,
+) async {
+  if (chats.isEmpty) return {};
+  
+  // Build OR conditions for batch query
+  final conditions = chats.map((c) => 
+    "and(request_id.eq.${c['request_id']},shop_id.eq.${c['shop_id']})"
+  ).join(',');
+  
+  final response = await _client
+      .from('request_chat_messages')
+      .select('request_id, shop_id')
+      .or(conditions)
+      .neq('sender_id', userId)
+      .eq('is_read', false);
+  
+  // Group by request+shop
+  final counts = <String, int>{};
+  for (final msg in response) {
+    final key = '${msg['request_id']}_${msg['shop_id']}';
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+```
+
+### 40.3 Database Function for Complex Aggregations
+
+```sql
+-- Function to get mechanic requests with all counts in one call
+CREATE OR REPLACE FUNCTION get_mechanic_requests_with_counts(p_mechanic_id UUID)
+RETURNS TABLE (
+    id UUID,
+    mechanic_id UUID,
+    vehicle_make VARCHAR,
+    vehicle_model VARCHAR,
+    vehicle_year INT,
+    part_category VARCHAR,
+    part_name VARCHAR,
+    description TEXT,
+    image_url TEXT,
+    suburb VARCHAR,
+    status VARCHAR,
+    created_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    offer_count BIGINT,
+    shop_count BIGINT,
+    quoted_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        pr.id,
+        pr.mechanic_id,
+        pr.vehicle_make,
+        pr.vehicle_model,
+        pr.vehicle_year,
+        pr.part_category,
+        pr.part_name,
+        pr.description,
+        pr.image_url,
+        pr.suburb,
+        pr.status,
+        pr.created_at,
+        pr.expires_at,
+        COALESCE((SELECT COUNT(*) FROM offers o WHERE o.request_id = pr.id), 0) as offer_count,
+        COALESCE((SELECT COUNT(*) FROM request_chats rc WHERE rc.request_id = pr.id), 0) as shop_count,
+        COALESCE((SELECT COUNT(*) FROM request_chats rc WHERE rc.request_id = pr.id AND rc.status = 'quoted'), 0) as quoted_count
+    FROM part_requests pr
+    WHERE pr.mechanic_id = p_mechanic_id
+    ORDER BY pr.created_at DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+---
+
+## 41. REAL-TIME SUBSCRIPTION ANALYSIS
+
+### 41.1 Current Subscriptions
+
+| Subscription | Channel | Filter | Reconnection | Issue |
+|--------------|---------|--------|--------------|-------|
+| `subscribeToOrder()` | `order_{id}` | `id = orderId` | ❌ None | 🔴 No reconnect |
+| `subscribeToMessages()` | `messages_{id}` | `conversation_id` | ❌ None | 🔴 No reconnect |
+| `subscribeToNotifications()` | `notifications_{id}` | `user_id` | ❌ None | 🔴 No reconnect |
+| `subscribeToOffersForRequest()` | `offers_{id}` | `request_id` | ❌ None | 🔴 No reconnect |
+
+### 41.2 Missing Reconnection Logic
+
+**Problem:** All real-time subscriptions lack reconnection logic. If the WebSocket disconnects (network change, server restart), the app won't receive updates.
+
+**Recommended Pattern:**
+```dart
+RealtimeChannel subscribeToOrderWithReconnect(
+  String orderId, 
+  void Function(Map<String, dynamic>) onUpdate,
+) {
+  late RealtimeChannel channel;
+  
+  void connect() {
+    channel = _client
+        .channel('order_$orderId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: SupabaseConstants.ordersTable,
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: orderId,
+          ),
+          callback: (payload) => onUpdate(payload.newRecord),
+        )
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.closed) {
+            // Reconnect after 2 seconds
+            Future.delayed(Duration(seconds: 2), connect);
+          }
+        });
+  }
+  
+  connect();
+  return channel;
+}
+```
+
+---
+
+## 42. CACHING STRATEGY RECOMMENDATIONS
+
+### 42.1 Client-Side Cache Opportunities
+
+| Data | Cache Duration | Strategy | Implementation |
+|------|----------------|----------|----------------|
+| Vehicle Makes | 24 hours | Memory + Local Storage | Static reference data |
+| Vehicle Models | 24 hours | Memory + Local Storage | Static reference data |
+| Part Categories | 24 hours | Memory + Local Storage | Static reference data |
+| Shop List | 5 minutes | Memory | May change frequently |
+| User Profile | Session | Riverpod Provider | Already implemented |
+| Notifications | 1 minute | Memory | Real-time updates override |
+
+### 42.2 Server-Side Cache (Future)
+
+| Query | Cache Key | TTL | Invalidation |
+|-------|-----------|-----|--------------|
+| `getNearbyShops()` | `shops:suburb:{suburb}` | 5 min | On shop update |
+| `getOffersForRequest()` | `offers:request:{id}` | 1 min | On new offer |
+| Analytics aggregations | `analytics:shop:{id}:{period}` | 15 min | On order/quote |
+
+---
+
+## 43. PASS 2 PHASE 2 SUMMARY
+
+### 43.1 Query Performance Score
+
+| Metric | Score | Notes |
+|--------|-------|-------|
+| **N+1 Query Patterns** | 60/100 | 1 critical, 2 medium issues found |
+| **Join Optimization** | 85/100 | Most queries use proper joins |
+| **Real-time Subscriptions** | 50/100 | No reconnection logic |
+| **Caching** | 40/100 | Minimal client-side caching |
+| **OVERALL** | **59/100** | Needs optimization before scale |
+
+### 43.2 Priority Fixes
+
+| Priority | Issue | Fix | Effort | Impact |
+|----------|-------|-----|--------|--------|
+| 🔴 P0 | `getMechanicRequests()` N+1 | Database view/function | 2 hours | 99% query reduction |
+| 🔴 P0 | WebSocket reconnection | Add reconnect logic | 4 hours | Prevents stale UI |
+| 🟠 P1 | Chat unread batch query | Batch function | 2 hours | 90% query reduction |
+| 🟠 P1 | Last message batch query | Batch function | 2 hours | 90% query reduction |
+| 🟡 P2 | Reference data caching | Local storage cache | 3 hours | Faster cold start |
+
+### 43.3 Phase 2 Certification
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║   📊 PASS 2 PHASE 2: QUERY PERFORMANCE ANALYSIS             ║
+║                                                              ║
+║   Status: ✅ COMPLETE                                        ║
+║   Performance Score: 59/100                                  ║
+║                                                              ║
+║   ✅ 15+ Query patterns analyzed                             ║
+║   ✅ 1 Critical N+1 pattern identified                       ║
+║   ✅ 4 Real-time subscriptions audited                       ║
+║   ✅ Caching strategy documented                             ║
+║   ✅ Optimization SQL provided                               ║
+║                                                              ║
+║   ⚠️ Action Items:                                           ║
+║   - Fix getMechanicRequests() N+1 (CRITICAL)                 ║
+║   - Add WebSocket reconnection (CRITICAL)                    ║
+║   - Batch chat queries (HIGH)                                ║
+║                                                              ║
+║   Next Phase: Pass 2 Phase 3 - Security Hardening           ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+---
+
+> **Pass 2 Phase 2 Completed:** January 24, 2026  
+> **Auditor:** Rovo Dev Query Performance Engine  
+> **Critical Fixes Required:** 2 (N+1 pattern, WebSocket reconnection)
+
