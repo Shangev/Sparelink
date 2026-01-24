@@ -10,6 +10,7 @@ import '../../../shared/widgets/sparelink_logo.dart';
 import '../../../shared/widgets/skeleton_loader.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/supabase_service.dart';
+import '../../../shared/services/resilient_realtime_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/environment_config.dart';
 
@@ -65,6 +66,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   List<RecentActivity> _recentActivity = [];
   int _unreadNotifications = 0;
   String _userName = '';
+  
+  // Real-time subscriptions for instant updates
+  ResilientRealtimeChannel? _offersChannel;
+  ResilientRealtimeChannel? _messagesChannel;
 
   @override
   void initState() {
@@ -74,6 +79,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   
   @override
   void dispose() {
+    _offersChannel?.dispose();
+    _messagesChannel?.dispose();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -117,6 +124,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _userName = name ?? '';
         });
         _loadHomeData();
+        _setupRealtimeSubscriptions();
       }
     } catch (e) {
       if (mounted) {
@@ -162,40 +170,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       final supabase = Supabase.instance.client;
       
-      // Get pending quotes count
-      final quotesResponse = await supabase
-          .from('offers')
-          .select('id')
-          .eq('status', 'pending')
-          .eq('request_id', supabase.from('part_requests').select('id').eq('user_id', userId));
+      // BUG FIX: Use part_requests_with_counts view for accurate counts
+      // The view uses mechanic_id (not user_id) and includes offer_count
+      final requestsWithCounts = await supabase
+          .from('part_requests_with_counts')
+          .select('id, status, offer_count, quoted_count')
+          .eq('mechanic_id', userId);
       
-      // Get active deliveries
+      final requestsList = requestsWithCounts as List;
+      final totalRequests = requestsList.length;
+      
+      // Count pending quotes from the view's offer_count for pending/offered requests
+      int pendingQuotes = 0;
+      for (final req in requestsList) {
+        if (req['status'] == 'pending' || req['status'] == 'offered') {
+          pendingQuotes += (req['offer_count'] as int? ?? 0);
+        }
+      }
+      
+      // Get active deliveries (orders in transit)
       final deliveriesResponse = await supabase
           .from('orders')
           .select('id')
-          .eq('buyer_id', userId)
-          .inFilter('status', ['confirmed', 'shipped', 'in_transit']);
+          .eq('mechanic_id', userId)
+          .inFilter('status', ['confirmed', 'preparing', 'processing', 'shipped', 'out_for_delivery']);
       
-      // Get total requests
-      final requestsResponse = await supabase
-          .from('part_requests')
-          .select('id')
-          .eq('user_id', userId);
+      // BUG FIX: Get unread messages using proper RLS-enabled query
+      // Check both regular messages and request_chat_messages
+      int unreadMessages = 0;
       
-      // Get unread messages
-      final messagesResponse = await supabase
-          .from('messages')
-          .select('id')
-          .eq('read', false)
-          .neq('sender_id', userId);
+      try {
+        // Regular conversation messages
+        final regularMessages = await supabase
+            .from('messages')
+            .select('id')
+            .eq('read', false)
+            .neq('sender_id', userId);
+        unreadMessages += (regularMessages as List).length;
+      } catch (_) {}
+      
+      try {
+        // Request chat messages (unread from shops)
+        final requestChatMessages = await supabase
+            .from('request_chat_messages')
+            .select('id')
+            .eq('read', false)
+            .neq('sender_id', userId);
+        unreadMessages += (requestChatMessages as List).length;
+      } catch (_) {}
+      
+      debugPrint('📊 [HomeStats] Total Requests: $totalRequests, Pending Quotes: $pendingQuotes, Deliveries: ${(deliveriesResponse as List).length}, Unread: $unreadMessages');
       
       return HomeStats(
-        pendingQuotes: (quotesResponse as List).length,
+        pendingQuotes: pendingQuotes,
         activeDeliveries: (deliveriesResponse as List).length,
-        totalRequests: (requestsResponse as List).length,
-        unreadMessages: (messagesResponse as List).length,
+        totalRequests: totalRequests,
+        unreadMessages: unreadMessages,
       );
     } catch (e) {
+      debugPrint('❌ [HomeStats] Error loading stats: $e');
       return HomeStats();
     }
   }
@@ -205,38 +238,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final supabase = Supabase.instance.client;
       final activities = <RecentActivity>[];
       
-      // Get recent requests
+      // BUG FIX: Use mechanic_id (not user_id) to match database schema
+      // Get recent requests from part_requests_with_counts view for richer data
       final requests = await supabase
-          .from('part_requests')
-          .select('id, part_name, status, created_at')
-          .eq('user_id', userId)
+          .from('part_requests_with_counts')
+          .select('id, part_name, status, created_at, offer_count')
+          .eq('mechanic_id', userId)
           .order('created_at', ascending: false)
           .limit(3);
       
       for (final req in (requests as List)) {
+        final offerCount = req['offer_count'] as int? ?? 0;
         activities.add(RecentActivity(
           id: req['id'],
           type: 'request',
           title: req['part_name'] ?? 'Part Request',
-          subtitle: 'Status: ${req['status'] ?? 'pending'}',
+          subtitle: offerCount > 0 
+              ? '$offerCount quote${offerCount > 1 ? 's' : ''} received'
+              : 'Waiting for quotes',
           timestamp: DateTime.parse(req['created_at']),
           status: req['status'],
         ));
       }
       
-      // Get recent offers
+      // BUG FIX: Use mechanic_id for offers join query
       final offers = await supabase
           .from('offers')
-          .select('id, price, status, created_at, part_requests!inner(user_id, part_name)')
-          .eq('part_requests.user_id', userId)
+          .select('id, price_cents, status, created_at, shops(name), part_requests!inner(mechanic_id, part_name)')
+          .eq('part_requests.mechanic_id', userId)
           .order('created_at', ascending: false)
           .limit(3);
       
       for (final offer in (offers as List)) {
+        final priceCents = offer['price_cents'] as int? ?? 0;
+        final priceRands = (priceCents / 100).toStringAsFixed(0);
+        final shopName = offer['shops']?['name'] ?? 'Shop';
         activities.add(RecentActivity(
           id: offer['id'],
           type: 'quote',
-          title: 'Quote: R${offer['price']}',
+          title: 'Quote: R$priceRands from $shopName',
           subtitle: offer['part_requests']?['part_name'] ?? 'Part',
           timestamp: DateTime.parse(offer['created_at']),
           status: offer['status'],
@@ -247,6 +287,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       activities.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return activities.take(5).toList();
     } catch (e) {
+      debugPrint('❌ [RecentActivity] Error loading: $e');
       return [];
     }
   }
@@ -263,6 +304,105 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } catch (e) {
       return 0;
     }
+  }
+
+  /// Set up real-time subscriptions for instant dashboard updates
+  void _setupRealtimeSubscriptions() {
+    final supabaseService = ref.read(supabaseServiceProvider);
+    final user = supabaseService.currentUser;
+    if (user == null) return;
+    
+    final client = Supabase.instance.client;
+    
+    // Subscribe to new offers on mechanic's requests
+    _offersChannel = ResilientRealtimeChannel(
+      client: client,
+      channelName: 'home_offers_${user.id}',
+      table: 'offers',
+      event: PostgresChangeEvent.insert,
+    );
+    
+    _offersChannel!.subscribe(
+      onData: (data) {
+        debugPrint('🔔 [Home] New offer received - refreshing stats');
+        // Refresh stats when new offer arrives
+        _loadHomeData();
+        
+        // Show snackbar notification
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: const [
+                  Icon(LucideIcons.sparkles, color: Colors.white, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('New quote received!')),
+                ],
+              ),
+              backgroundColor: AppTheme.accentGreen,
+              duration: const Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'View',
+                textColor: Colors.white,
+                onPressed: () => context.push('/my-requests'),
+              ),
+            ),
+          );
+        }
+      },
+      onStateChange: (state) {
+        debugPrint('🔔 [Home] Offers channel state: $state');
+      },
+      onError: (error) {
+        debugPrint('❌ [Home] Offers channel error: $error');
+      },
+    );
+    
+    // Subscribe to new messages
+    _messagesChannel = ResilientRealtimeChannel(
+      client: client,
+      channelName: 'home_messages_${user.id}',
+      table: 'request_chat_messages',
+      event: PostgresChangeEvent.insert,
+    );
+    
+    _messagesChannel!.subscribe(
+      onData: (data) {
+        // Only notify if message is not from current user
+        final senderId = data['sender_id'] as String?;
+        if (senderId != user.id) {
+          debugPrint('🔔 [Home] New message received - refreshing stats');
+          _loadHomeData();
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: const [
+                    Icon(LucideIcons.messageCircle, color: Colors.white, size: 20),
+                    SizedBox(width: 12),
+                    Expanded(child: Text('New message from shop!')),
+                  ],
+                ),
+                backgroundColor: Colors.blue,
+                duration: const Duration(seconds: 3),
+                action: SnackBarAction(
+                  label: 'Open',
+                  textColor: Colors.white,
+                  onPressed: () => context.push('/chats'),
+                ),
+              ),
+            );
+          }
+        }
+      },
+      onStateChange: (state) {
+        debugPrint('🔔 [Home] Messages channel state: $state');
+      },
+      onError: (error) {
+        debugPrint('❌ [Home] Messages channel error: $error');
+      },
+    );
   }
 
   Future<void> _onRefresh() async {
