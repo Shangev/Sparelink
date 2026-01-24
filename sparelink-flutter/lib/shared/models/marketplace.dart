@@ -564,7 +564,7 @@ class Order {
       'offer_id': offerId,
       'total_cents': totalCents,
       'payment_method': paymentMethod,
-      'status': status.name,
+      'status': status.databaseValue,  // Pass 3 FIX: Use databaseValue for snake_case (out_for_delivery)
       'delivery_to': deliveryTo.name,
       'delivery_address': deliveryAddress,
       'driver_name': driverName,

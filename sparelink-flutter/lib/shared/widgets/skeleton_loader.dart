@@ -300,3 +300,118 @@ class SkeletonChatItem extends StatelessWidget {
     );
   }
 }
+
+/// Pass 3 FIX: Skeleton for request card with offer counts
+/// Used when loading data from part_requests_with_counts view
+/// Shows placeholder for offer count badge to prevent "jumpy" UI
+class SkeletonRequestCardWithCounts extends StatelessWidget {
+  const SkeletonRequestCardWithCounts({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top row: Image + Vehicle info + Status badge
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Part image placeholder
+              const SkeletonLoader(width: 72, height: 72, borderRadius: 12),
+              const SizedBox(width: 12),
+              // Vehicle and part info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    // Part name
+                    SkeletonLoader(height: 18, width: 160),
+                    SizedBox(height: 8),
+                    // Vehicle info
+                    SkeletonLoader(height: 14, width: 120),
+                    SizedBox(height: 4),
+                    // Time ago
+                    SkeletonLoader(height: 12, width: 60),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Status badge placeholder
+              const SkeletonLoader(width: 80, height: 28, borderRadius: 14),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Bottom row: Offer counts from view
+          Row(
+            children: [
+              // Shops contacted count
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.03),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: const [
+                      SkeletonLoader(width: 16, height: 16, borderRadius: 4),
+                      SizedBox(width: 8),
+                      SkeletonLoader(height: 12, width: 70),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Quotes received count (from view)
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.03),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: const [
+                      SkeletonLoader(width: 16, height: 16, borderRadius: 4),
+                      SizedBox(width: 8),
+                      SkeletonLoader(height: 12, width: 60),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pass 3 FIX: Skeleton list for multiple request cards with counts
+/// Use this when loading the My Requests screen
+class SkeletonRequestListWithCounts extends StatelessWidget {
+  final int itemCount;
+  
+  const SkeletonRequestListWithCounts({
+    super.key,
+    this.itemCount = 5,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: itemCount,
+      itemBuilder: (context, index) => const SkeletonRequestCardWithCounts(),
+    );
+  }
+}

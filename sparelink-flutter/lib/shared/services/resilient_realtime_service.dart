@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // =============================================================================
@@ -460,6 +462,358 @@ class ResilientRealtimeService {
   void reconnectAll() {
     for (final channel in _channels.values) {
       channel.reconnect();
+    }
+  }
+}
+
+// =============================================================================
+// PENDING SYNC MANAGER (Pass 3 Final Polish)
+// Automatically syncs queued offline actions when connection is restored
+// =============================================================================
+
+/// Manages syncing of offline-queued actions when connectivity is restored
+class PendingSyncManager {
+  final SupabaseClient _client;
+  final void Function(String message, bool isError)? onSyncStatus;
+  
+  bool _isSyncing = false;
+  
+  PendingSyncManager(this._client, {this.onSyncStatus});
+  
+  /// Check if currently syncing
+  bool get isSyncing => _isSyncing;
+  
+  /// Attempt to sync all pending actions
+  /// Call this when network connectivity is restored
+  Future<SyncResult> syncPendingActions() async {
+    // Import here to avoid circular dependency
+    final OfflineCacheService = _getOfflineCacheService();
+    
+    if (_isSyncing) {
+      return SyncResult(
+        success: false,
+        message: 'Sync already in progress',
+        syncedCount: 0,
+        failedCount: 0,
+      );
+    }
+    
+    _isSyncing = true;
+    int syncedCount = 0;
+    int failedCount = 0;
+    final List<String> errors = [];
+    
+    try {
+      final actions = await OfflineCacheService.getPendingActions();
+      
+      if (actions.isEmpty) {
+        _isSyncing = false;
+        return SyncResult(
+          success: true,
+          message: 'No pending actions to sync',
+          syncedCount: 0,
+          failedCount: 0,
+        );
+      }
+      
+      onSyncStatus?.call('Syncing ${actions.length} pending action(s)...', false);
+      debugPrint('🔄 Starting sync of ${actions.length} pending actions');
+      
+      for (final action in actions) {
+        if (action.status == PendingSyncStatus.failed) {
+          // Skip permanently failed actions
+          failedCount++;
+          continue;
+        }
+        
+        try {
+          await _executeAction(action);
+          await OfflineCacheService.removePendingAction(action.id);
+          syncedCount++;
+          debugPrint('✅ Synced: ${action.displayDescription}');
+        } catch (e) {
+          final errorMsg = e.toString();
+          await OfflineCacheService.markActionFailed(action.id, errorMsg);
+          errors.add('${action.displayDescription}: $errorMsg');
+          failedCount++;
+          debugPrint('❌ Failed to sync ${action.displayDescription}: $e');
+        }
+      }
+      
+      final message = syncedCount > 0 
+          ? 'Synced $syncedCount action(s)${failedCount > 0 ? ', $failedCount failed' : ''}'
+          : 'Failed to sync $failedCount action(s)';
+      
+      onSyncStatus?.call(message, failedCount > 0 && syncedCount == 0);
+      
+      return SyncResult(
+        success: syncedCount > 0 || failedCount == 0,
+        message: message,
+        syncedCount: syncedCount,
+        failedCount: failedCount,
+        errors: errors,
+      );
+    } finally {
+      _isSyncing = false;
+    }
+  }
+  
+  /// Execute a single pending action
+  Future<void> _executeAction(PendingAction action) async {
+    switch (action.type) {
+      case PendingActionType.acceptOffer:
+        await _syncAcceptOffer(action);
+        break;
+      case PendingActionType.rejectOffer:
+        await _syncRejectOffer(action);
+        break;
+      case PendingActionType.cancelOrder:
+        await _syncCancelOrder(action);
+        break;
+      case PendingActionType.sendMessage:
+        await _syncSendMessage(action);
+        break;
+      case PendingActionType.updateProfile:
+        await _syncUpdateProfile(action);
+        break;
+    }
+  }
+  
+  Future<void> _syncAcceptOffer(PendingAction action) async {
+    final offerId = action.resourceId;
+    final deliveryAddress = action.payload['delivery_address'] as String?;
+    final deliveryInstructions = action.payload['delivery_instructions'] as String?;
+    
+    // Call the accept offer endpoint
+    await _client.rpc('accept_offer', params: {
+      'p_offer_id': offerId,
+      'p_delivery_address': deliveryAddress,
+      'p_delivery_instructions': deliveryInstructions,
+    });
+  }
+  
+  Future<void> _syncRejectOffer(PendingAction action) async {
+    final offerId = action.resourceId;
+    
+    await _client
+        .from('offers')
+        .update({'status': 'rejected'})
+        .eq('id', offerId);
+  }
+  
+  Future<void> _syncCancelOrder(PendingAction action) async {
+    final orderId = action.resourceId;
+    final reason = action.payload['reason'] as String?;
+    
+    await _client
+        .from('orders')
+        .update({
+          'status': 'cancelled',
+          'cancellation_reason': reason,
+          'cancelled_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', orderId);
+  }
+  
+  Future<void> _syncSendMessage(PendingAction action) async {
+    final conversationId = action.payload['conversation_id'] as String?;
+    final requestId = action.payload['request_id'] as String?;
+    final shopId = action.payload['shop_id'] as String?;
+    final content = action.payload['content'] as String?;
+    final senderId = action.payload['sender_id'] as String?;
+    
+    if (requestId != null && shopId != null) {
+      // Request chat message
+      await _client.from('request_chat_messages').insert({
+        'request_id': requestId,
+        'shop_id': shopId,
+        'sender_id': senderId,
+        'content': content,
+        'created_at': action.createdAt.toIso8601String(),
+      });
+    } else if (conversationId != null) {
+      // Regular message
+      await _client.from('messages').insert({
+        'conversation_id': conversationId,
+        'sender_id': senderId,
+        'content': content,
+        'created_at': action.createdAt.toIso8601String(),
+      });
+    }
+  }
+  
+  Future<void> _syncUpdateProfile(PendingAction action) async {
+    final userId = action.resourceId;
+    final updates = action.payload;
+    
+    await _client
+        .from('profiles')
+        .update(updates)
+        .eq('id', userId);
+  }
+  
+  /// Helper to get OfflineCacheService (avoids import at top level)
+  dynamic _getOfflineCacheService() {
+    // This is a workaround - in production, use proper DI
+    return OfflineCacheServiceHelper;
+  }
+}
+
+/// Helper class to access OfflineCacheService static methods
+class OfflineCacheServiceHelper {
+  static Future<List<PendingAction>> getPendingActions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('pending_sync_queue');
+    
+    if (jsonString == null) return [];
+    
+    try {
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      return decoded
+          .map((e) => PendingAction.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+  
+  static Future<void> removePendingAction(String actionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final actions = await getPendingActions();
+    
+    final filtered = actions.where((a) => a.id != actionId).toList();
+    await prefs.setString(
+      'pending_sync_queue', 
+      jsonEncode(filtered.map((a) => a.toJson()).toList()),
+    );
+  }
+  
+  static Future<void> markActionFailed(String actionId, String error) async {
+    final prefs = await SharedPreferences.getInstance();
+    final actions = await getPendingActions();
+    
+    final updated = actions.map((a) {
+      if (a.id == actionId) {
+        return PendingAction(
+          id: a.id,
+          type: a.type,
+          resourceId: a.resourceId,
+          payload: a.payload,
+          createdAt: a.createdAt,
+          retryCount: a.retryCount + 1,
+          lastError: error,
+          status: a.retryCount >= 2 ? PendingSyncStatus.failed : PendingSyncStatus.pending,
+        );
+      }
+      return a;
+    }).toList();
+    
+    await prefs.setString(
+      'pending_sync_queue', 
+      jsonEncode(updated.map((a) => a.toJson()).toList()),
+    );
+  }
+}
+
+/// Result of a sync operation
+class SyncResult {
+  final bool success;
+  final String message;
+  final int syncedCount;
+  final int failedCount;
+  final List<String> errors;
+  
+  SyncResult({
+    required this.success,
+    required this.message,
+    required this.syncedCount,
+    required this.failedCount,
+    this.errors = const [],
+  });
+}
+
+/// Import these from offline_cache_service.dart
+/// Re-exported here for convenience
+enum PendingActionType {
+  acceptOffer,
+  rejectOffer,
+  cancelOrder,
+  sendMessage,
+  updateProfile,
+}
+
+enum PendingSyncStatus {
+  pending,
+  syncing,
+  failed,
+  completed,
+}
+
+class PendingAction {
+  final String id;
+  final PendingActionType type;
+  final String resourceId;
+  final Map<String, dynamic> payload;
+  final DateTime createdAt;
+  final int retryCount;
+  final String? lastError;
+  final PendingSyncStatus status;
+  
+  PendingAction({
+    required this.id,
+    required this.type,
+    required this.resourceId,
+    required this.payload,
+    required this.createdAt,
+    this.retryCount = 0,
+    this.lastError,
+    this.status = PendingSyncStatus.pending,
+  });
+  
+  factory PendingAction.fromJson(Map<String, dynamic> json) {
+    return PendingAction(
+      id: json['id'] ?? '',
+      type: PendingActionType.values.firstWhere(
+        (e) => e.name == json['type'],
+        orElse: () => PendingActionType.acceptOffer,
+      ),
+      resourceId: json['resource_id'] ?? '',
+      payload: Map<String, dynamic>.from(json['payload'] ?? {}),
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
+      retryCount: json['retry_count'] ?? 0,
+      lastError: json['last_error'],
+      status: PendingSyncStatus.values.firstWhere(
+        (e) => e.name == json['status'],
+        orElse: () => PendingSyncStatus.pending,
+      ),
+    );
+  }
+  
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type.name,
+    'resource_id': resourceId,
+    'payload': payload,
+    'created_at': createdAt.toIso8601String(),
+    'retry_count': retryCount,
+    'last_error': lastError,
+    'status': status.name,
+  };
+  
+  String get displayDescription {
+    switch (type) {
+      case PendingActionType.acceptOffer:
+        return 'Accept quote';
+      case PendingActionType.rejectOffer:
+        return 'Reject quote';
+      case PendingActionType.cancelOrder:
+        return 'Cancel order';
+      case PendingActionType.sendMessage:
+        return 'Send message';
+      case PendingActionType.updateProfile:
+        return 'Update profile';
     }
   }
 }

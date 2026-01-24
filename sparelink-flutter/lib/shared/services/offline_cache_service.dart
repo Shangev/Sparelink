@@ -403,5 +403,223 @@ class OfflineCacheService {
     return await hasCachedRequests() || 
            await hasCachedOrders();
   }
+  
+  // ============================================
+  // PENDING SYNC QUEUE (Pass 3 Final Polish)
+  // ============================================
+  // When offline, queue critical actions (like accepting quotes) 
+  // and sync when connection is restored
+  
+  static const String _keyPendingSyncQueue = 'pending_sync_queue';
+  
+  /// Add an action to the pending sync queue (for offline use)
+  static Future<void> queuePendingAction(PendingAction action) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Get existing queue
+    List<Map<String, dynamic>> queue = [];
+    final existingJson = prefs.getString(_keyPendingSyncQueue);
+    if (existingJson != null) {
+      try {
+        queue = List<Map<String, dynamic>>.from(
+          (jsonDecode(existingJson) as List).map((e) => Map<String, dynamic>.from(e))
+        );
+      } catch (_) {}
+    }
+    
+    // Add new action
+    queue.add(action.toJson());
+    await prefs.setString(_keyPendingSyncQueue, jsonEncode(queue));
+    debugPrint('📥 Queued pending action: ${action.type.name} for ${action.resourceId}');
+  }
+  
+  /// Get all pending actions
+  static Future<List<PendingAction>> getPendingActions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_keyPendingSyncQueue);
+    
+    if (jsonString == null) return [];
+    
+    try {
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      return decoded
+          .map((e) => PendingAction.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      debugPrint('⚠️ Error decoding pending actions: $e');
+      return [];
+    }
+  }
+  
+  /// Check if there are pending actions to sync
+  static Future<bool> hasPendingActions() async {
+    final actions = await getPendingActions();
+    return actions.isNotEmpty;
+  }
+  
+  /// Get count of pending actions
+  static Future<int> getPendingActionCount() async {
+    final actions = await getPendingActions();
+    return actions.length;
+  }
+  
+  /// Remove a pending action after successful sync
+  static Future<void> removePendingAction(String actionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final actions = await getPendingActions();
+    
+    final filtered = actions.where((a) => a.id != actionId).toList();
+    await prefs.setString(
+      _keyPendingSyncQueue, 
+      jsonEncode(filtered.map((a) => a.toJson()).toList()),
+    );
+    debugPrint('✅ Removed synced action: $actionId');
+  }
+  
+  /// Clear all pending actions (use with caution)
+  static Future<void> clearPendingActions() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyPendingSyncQueue);
+    debugPrint('🗑️ Cleared all pending actions');
+  }
+  
+  /// Mark an action as failed with error message
+  static Future<void> markActionFailed(String actionId, String error) async {
+    final prefs = await SharedPreferences.getInstance();
+    final actions = await getPendingActions();
+    
+    final updated = actions.map((a) {
+      if (a.id == actionId) {
+        return PendingAction(
+          id: a.id,
+          type: a.type,
+          resourceId: a.resourceId,
+          payload: a.payload,
+          createdAt: a.createdAt,
+          retryCount: a.retryCount + 1,
+          lastError: error,
+          status: a.retryCount >= 2 ? PendingSyncStatus.failed : PendingSyncStatus.pending,
+        );
+      }
+      return a;
+    }).toList();
+    
+    await prefs.setString(
+      _keyPendingSyncQueue, 
+      jsonEncode(updated.map((a) => a.toJson()).toList()),
+    );
+  }
+}
+
+/// Types of actions that can be queued for offline sync
+enum PendingActionType {
+  acceptOffer,      // Mechanic accepts a quote while offline
+  rejectOffer,      // Mechanic rejects a quote
+  cancelOrder,      // Mechanic cancels an order
+  sendMessage,      // Send a chat message
+  updateProfile,    // Profile update
+}
+
+/// Status of a pending sync action
+enum PendingSyncStatus {
+  pending,    // Waiting to sync
+  syncing,    // Currently syncing
+  failed,     // Failed after max retries
+  completed,  // Successfully synced (should be removed)
+}
+
+/// Represents an action queued for sync when offline
+class PendingAction {
+  final String id;
+  final PendingActionType type;
+  final String resourceId;  // offer_id, order_id, message_id, etc.
+  final Map<String, dynamic> payload;
+  final DateTime createdAt;
+  final int retryCount;
+  final String? lastError;
+  final PendingSyncStatus status;
+  
+  PendingAction({
+    required this.id,
+    required this.type,
+    required this.resourceId,
+    required this.payload,
+    required this.createdAt,
+    this.retryCount = 0,
+    this.lastError,
+    this.status = PendingSyncStatus.pending,
+  });
+  
+  /// Create a new pending action with auto-generated ID
+  factory PendingAction.create({
+    required PendingActionType type,
+    required String resourceId,
+    Map<String, dynamic>? payload,
+  }) {
+    return PendingAction(
+      id: '${type.name}_${resourceId}_${DateTime.now().millisecondsSinceEpoch}',
+      type: type,
+      resourceId: resourceId,
+      payload: payload ?? {},
+      createdAt: DateTime.now(),
+    );
+  }
+  
+  factory PendingAction.fromJson(Map<String, dynamic> json) {
+    return PendingAction(
+      id: json['id'] ?? '',
+      type: PendingActionType.values.firstWhere(
+        (e) => e.name == json['type'],
+        orElse: () => PendingActionType.acceptOffer,
+      ),
+      resourceId: json['resource_id'] ?? '',
+      payload: Map<String, dynamic>.from(json['payload'] ?? {}),
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
+      retryCount: json['retry_count'] ?? 0,
+      lastError: json['last_error'],
+      status: PendingSyncStatus.values.firstWhere(
+        (e) => e.name == json['status'],
+        orElse: () => PendingSyncStatus.pending,
+      ),
+    );
+  }
+  
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type.name,
+    'resource_id': resourceId,
+    'payload': payload,
+    'created_at': createdAt.toIso8601String(),
+    'retry_count': retryCount,
+    'last_error': lastError,
+    'status': status.name,
+  };
+  
+  /// Human-readable description for UI
+  String get displayDescription {
+    switch (type) {
+      case PendingActionType.acceptOffer:
+        return 'Accept quote';
+      case PendingActionType.rejectOffer:
+        return 'Reject quote';
+      case PendingActionType.cancelOrder:
+        return 'Cancel order';
+      case PendingActionType.sendMessage:
+        return 'Send message';
+      case PendingActionType.updateProfile:
+        return 'Update profile';
+    }
+  }
+  
+  /// Time since creation
+  String get timeAgo {
+    final diff = DateTime.now().difference(createdAt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
 }
 

@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/models/marketplace.dart';
 import '../../../shared/services/supabase_service.dart';
+import '../../../shared/services/error_handler_service.dart';
 
 /// Shop Detail Screen
 /// View shop details, part info, and confirm order
@@ -97,11 +98,90 @@ class _ShopDetailScreenState extends ConsumerState<ShopDetailScreen> {
         // Navigate to order tracking with real order ID
         context.push('/order/${order['id']}');
       }
-    } catch (e) {
+    } on QuoteExpiredException catch (e) {
+      // CS-17 FIX: Handle expired quote with user-friendly message
       setState(() => _isOrdering = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to place order: ${e.toString()}')),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(LucideIcons.clock, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(child: Text(e.message)),
+              ],
+            ),
+            backgroundColor: Colors.orange[700],
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Go Back',
+              textColor: Colors.white,
+              onPressed: () => context.pop(),
+            ),
+          ),
+        );
+      }
+    } on QuoteAlreadyAcceptedException catch (e) {
+      // CS-17 FIX: Handle race condition - quote accepted by another user
+      setState(() => _isOrdering = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(LucideIcons.userCheck, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(child: Text(e.message)),
+              ],
+            ),
+            backgroundColor: Colors.red[700],
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'View Other Quotes',
+              textColor: Colors.white,
+              onPressed: () => context.pop(),
+            ),
+          ),
+        );
+      }
+    } on QuoteRejectedException catch (e) {
+      // CS-17 FIX: Handle rejected quote
+      setState(() => _isOrdering = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(LucideIcons.xCircle, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(child: Text(e.message)),
+              ],
+            ),
+            backgroundColor: Colors.grey[700],
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } on AppException catch (e) {
+      // Handle other app exceptions with user-friendly messages
+      setState(() => _isOrdering = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: Colors.red[700],
+          ),
+        );
+      }
+    } catch (e) {
+      // Fallback for unexpected errors
+      setState(() => _isOrdering = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to place order. Please try again.'),
+            backgroundColor: Colors.red[700],
+          ),
         );
       }
     }

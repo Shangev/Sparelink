@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../shared/models/marketplace.dart';
 import '../../../shared/services/supabase_service.dart';
 import '../../../shared/services/offline_cache_service.dart';
+import '../../../shared/services/resilient_realtime_service.dart';
 import '../../../shared/widgets/sparelink_logo.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
 import '../../../shared/widgets/skeleton_loader.dart';
@@ -36,6 +38,10 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
   // Bulk selection state
   bool _isSelectionMode = false;
   Set<String> _selectedIds = {};
+  
+  // Pass 3 FIX: Real-time subscription for new offers (optimistic UI)
+  ResilientRealtimeChannel? _offersChannel;
+  bool _hasNewOffers = false;
 
   // Design constants - UX-01 FIX: Use AppTheme colors for consistency
   static const Color _backgroundColor = Color(0xFF000000);  // AppTheme.primaryBlack
@@ -49,12 +55,100 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
     super.initState();
     _loadRequests();
     _searchController.addListener(_onSearchChanged);
+    _subscribeToNewOffers();
   }
   
   @override
   void dispose() {
+    _offersChannel?.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+  
+  /// Pass 3 FIX: Subscribe to new offers for real-time optimistic UI updates
+  /// When a shop sends a new quote, the UI updates instantly without manual refresh
+  void _subscribeToNewOffers() {
+    final supabaseService = ref.read(supabaseServiceProvider);
+    final client = Supabase.instance.client;
+    
+    // Subscribe to all new offers (we'll filter client-side)
+    _offersChannel = ResilientRealtimeChannel(
+      client: client,
+      channelName: 'my_requests_new_offers',
+      table: 'offers',
+      event: PostgresChangeEvent.insert,
+    );
+    
+    _offersChannel!.subscribe(
+      onData: (data) {
+        // Check if this offer is for one of our requests
+        final requestId = data['request_id'] as String?;
+        if (requestId != null) {
+          final matchingRequest = _requests.where((r) => r.id == requestId).firstOrNull;
+          if (matchingRequest != null) {
+            // Optimistic UI update: increment offer count immediately
+            setState(() {
+              _hasNewOffers = true;
+              // Update the request in place with incremented offer count
+              final index = _requests.indexWhere((r) => r.id == requestId);
+              if (index != -1) {
+                final oldRequest = _requests[index];
+                // Create updated request with incremented count and 'offered' status
+                _requests[index] = PartRequest(
+                  id: oldRequest.id,
+                  mechanicId: oldRequest.mechanicId,
+                  vehicleMake: oldRequest.vehicleMake,
+                  vehicleModel: oldRequest.vehicleModel,
+                  vehicleYear: oldRequest.vehicleYear,
+                  partName: oldRequest.partName,
+                  partCategory: oldRequest.partCategory,
+                  description: oldRequest.description,
+                  imageUrl: oldRequest.imageUrl,
+                  suburb: oldRequest.suburb,
+                  status: RequestStatus.offered, // Update status to offered
+                  offerCount: oldRequest.offerCount + 1, // Increment count
+                  shopCount: oldRequest.shopCount,
+                  quotedCount: oldRequest.quotedCount + 1,
+                  createdAt: oldRequest.createdAt,
+                  expiresAt: oldRequest.expiresAt,
+                );
+                _applyFilters();
+              }
+            });
+            
+            // Show a snackbar notification
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(LucideIcons.sparkles, color: Colors.white, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text('New quote received for ${matchingRequest.partName ?? 'your request'}!'),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: _accentGreen,
+                  duration: const Duration(seconds: 3),
+                  action: SnackBarAction(
+                    label: 'View',
+                    textColor: Colors.white,
+                    onPressed: () => context.push('/marketplace/${requestId}'),
+                  ),
+                ),
+              );
+            }
+          }
+        }
+      },
+      onStateChange: (state) {
+        debugPrint('🔔 [MyRequests] Realtime connection state: $state');
+      },
+      onError: (error) {
+        debugPrint('❌ [MyRequests] Realtime error: $error');
+      },
+    );
   }
   
   void _onSearchChanged() {
