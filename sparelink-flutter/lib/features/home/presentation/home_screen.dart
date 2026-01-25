@@ -215,12 +215,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             
             // Only query if we have valid request IDs
             if (requestIds.isNotEmpty) {
-              final offersResponse = await supabase
-                  .from('offers')
-                  .select('id')
-                  .inFilter('request_id', requestIds)
-                  .eq('status', 'pending');
-              pendingQuotes = (offersResponse as List).length;
+              // BUGFIX: Query pending offers for each request individually to avoid
+              // Supabase SDK chaining issues with inFilter + eq
+              int offerCount = 0;
+              for (final reqId in requestIds) {
+                try {
+                  final offersResponse = await supabase
+                      .from('offers')
+                      .select('id')
+                      .eq('request_id', reqId)
+                      .eq('status', 'pending');
+                  offerCount += (offersResponse as List).length;
+                } catch (_) {}
+              }
+              pendingQuotes = offerCount;
             }
           } catch (e) {
             debugPrint('⚠️ [HomeStats] Offers query failed: $e');
