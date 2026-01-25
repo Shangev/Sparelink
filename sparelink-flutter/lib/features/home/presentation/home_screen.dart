@@ -207,14 +207,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // Get pending offers count separately
         if (totalRequests > 0) {
           try {
-            final requestIds = requestsList.map((r) => r['id'] as String).toList();
-            final offersResponse = await supabase
-                .from('offers')
-                .select('id')
-                .inFilter('request_id', requestIds)
-                .eq('status', 'pending');
-            pendingQuotes = (offersResponse as List).length;
-          } catch (_) {}
+            final requestIds = requestsList
+                .map((r) => r['id'])
+                .whereType<String>()  // Filter out nulls and ensure String type
+                .where((id) => id.isNotEmpty)  // Filter out empty strings
+                .toList();
+            
+            // Only query if we have valid request IDs
+            if (requestIds.isNotEmpty) {
+              final offersResponse = await supabase
+                  .from('offers')
+                  .select('id')
+                  .inFilter('request_id', requestIds)
+                  .eq('status', 'pending');
+              pendingQuotes = (offersResponse as List).length;
+            }
+          } catch (e) {
+            debugPrint('⚠️ [HomeStats] Offers query failed: $e');
+          }
         }
       }
       

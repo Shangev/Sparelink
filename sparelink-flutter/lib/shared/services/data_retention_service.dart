@@ -154,9 +154,14 @@ class DataRetentionService {
       
       if (expiredRequests.isEmpty) return 0;
       
+      // SAFETY: Ensure we only have valid string IDs
       final requestIds = (expiredRequests as List)
-          .map((r) => r['id'] as String)
+          .map((r) => r['id'])
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
           .toList();
+      
+      if (requestIds.isEmpty) return 0;
       
       // Delete associated offers first
       await _supabase

@@ -693,7 +693,16 @@ class SupabaseService {
       return [];
     }
     
-    final requestIds = requests.map((r) => r['id'] as String).toList();
+    // SAFETY: Ensure we only have valid string IDs
+    final requestIds = requests
+        .map((r) => r['id'])
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toList();
+    
+    if (requestIds.isEmpty) {
+      return [];
+    }
     
     // Calculate 24 hours ago for data retention cutoff
     final retentionCutoff = DateTime.now().subtract(const Duration(hours: 24)).toUtc().toIso8601String();
