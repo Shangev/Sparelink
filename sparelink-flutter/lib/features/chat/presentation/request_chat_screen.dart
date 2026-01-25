@@ -889,17 +889,20 @@ class _RequestChatScreenState extends ConsumerState<RequestChatScreen> {
           .update({'status': 'accepted'})
           .eq('id', widget.chatId);
       
-      // Reject other chats
+      // Reject other chats - use _request['id'] to avoid serialization bug
+      // when _chat['request_id'] contains the joined object instead of UUID
+      final requestId = _request?['id'] ?? _chat!['request_id'];
+      
       await Supabase.instance.client
           .from('request_chats')
           .update({'status': 'rejected'})
-          .eq('request_id', _chat!['request_id'])
+          .eq('request_id', requestId)
           .neq('id', widget.chatId);
       
       await Supabase.instance.client
           .from('part_requests')
           .update({'status': 'accepted', 'accepted_shop_id': _chat!['shop_id']})
-          .eq('id', _chat!['request_id']);
+          .eq('id', requestId);
       
       await Supabase.instance.client.from('messages').insert({
         'conversation_id': _conversationId,

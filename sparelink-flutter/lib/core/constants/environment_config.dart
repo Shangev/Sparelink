@@ -71,7 +71,7 @@ class EnvironmentConfig {
   /// Can be overridden via environment for different environments
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeHNiZnplemZqbmt4d25ua2xmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNDY1MjIsImV4cCI6MjA4MzcyMjUyMn0.lHSBwHRery2A2Zhlk-HzTvWXhGR0GIjybrlec',
+    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeHNiZnplemZqbmt4d25ua2xmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNDY1MjIsImV4cCI6MjA4MzcyMjUyMn0.lHSBwHRery2A5wMy0A2Zhlk-HzTvWXhGR0GIjybrlec',
   );
   
   // ===========================================

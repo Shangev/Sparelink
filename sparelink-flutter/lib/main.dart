@@ -10,10 +10,13 @@ import 'core/theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Supabase
+  // Initialize Supabase with explicit apikey header injection
   await Supabase.initialize(
     url: SupabaseConstants.supabaseUrl,
     anonKey: SupabaseConstants.supabaseAnonKey,
+    headers: {
+      'apikey': SupabaseConstants.supabaseAnonKey,
+    },
   );
   
   // Set preferred orientations (portrait only for mobile, all for web/desktop)
