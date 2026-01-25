@@ -442,6 +442,12 @@ class SupabaseService {
   
   /// Get offers for a request
   Future<List<Map<String, dynamic>>> getOffersForRequest(String requestId) async {
+    // SAFETY CHECK: Ensure requestId is a valid string, not an object
+    if (requestId.isEmpty) {
+      debugPrint('⚠️ [getOffersForRequest] Empty requestId provided');
+      return [];
+    }
+    
     final response = await _client
         .from(SupabaseConstants.offersTable)
         .select('*, shops(*)')
