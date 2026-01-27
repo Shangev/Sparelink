@@ -10,6 +10,9 @@ import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/vehicle_service.dart';
 import '../../../shared/services/draft_service.dart';
 import '../../../shared/services/ux_service.dart';
+import '../../../shared/services/haptic_service.dart';
+import '../../../shared/widgets/haptic_buttons.dart';
+import '../../../shared/widgets/haptic_tap.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
 import '../../../shared/widgets/app_rating_dialog.dart';
 
@@ -567,7 +570,7 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
 
       if (mounted) {
         // Success haptic feedback
-        await UxService.successHaptic();
+        await HapticService.successPattern();
         
         // Increment request count for app rating prompt
         await UxService.incrementRequestCount();
@@ -592,7 +595,7 @@ class _RequestPartScreenState extends ConsumerState<RequestPartScreen> {
       }
     } catch (e) {
       // Error haptic feedback
-      await UxService.errorHaptic();
+      await HapticService.error();
       _showError('Failed to submit request: ${e.toString()}');
     } finally {
       if (mounted) {

@@ -84,7 +84,7 @@ class _ChatDetailPanelState extends ConsumerState<ChatDetailPanel> {
       // Load messages from request_chat_messages
       final messages = await Supabase.instance.client
           .from('request_chat_messages')
-          .select('*')
+          .select('id, request_id, shop_id, sender_id, content, sent_at, is_read, read_at')
           .eq('request_id', requestId)
           .eq('shop_id', shopId)
           .order('sent_at', ascending: true);

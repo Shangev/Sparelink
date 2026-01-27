@@ -130,8 +130,29 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
         bool lastMessageIsRead = false;
         
         try {
-          final requestId = chat['request_id'] ?? chat['part_requests']?['id'];
-          final shopId = chat['shop_id'] ?? chat['shops']?['id'];
+          final requestIdRaw = chat['request_id'] ?? chat['part_requests']?['id'];
+          final shopIdRaw = chat['shop_id'] ?? chat['shops']?['id'];
+
+          final requestId = requestIdRaw is String
+              ? requestIdRaw
+              : (requestIdRaw is Map
+                  ? requestIdRaw['id'] as String?
+                  : (requestIdRaw is List && requestIdRaw.isNotEmpty && requestIdRaw.first is Map
+                      ? (requestIdRaw.first as Map)['id'] as String?
+                      : null));
+
+          final shopId = shopIdRaw is String
+              ? shopIdRaw
+              : (shopIdRaw is Map
+                  ? shopIdRaw['id'] as String?
+                  : (shopIdRaw is List && shopIdRaw.isNotEmpty && shopIdRaw.first is Map
+                      ? (shopIdRaw.first as Map)['id'] as String?
+                      : null));
+
+          if (requestId == null || shopId == null) {
+            debugPrint('⚠️ [ChatsScreen] Skipping chat with invalid IDs: request=$requestIdRaw shop=$shopIdRaw');
+            continue;
+          }
           
           if (requestId != null && shopId != null) {
             final lastMsg = await supabaseService.getLastMessageForChat(requestId, shopId);
@@ -150,8 +171,8 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
         int unreadCount = 0;
         try {
           unreadCount = await supabaseService.getUnreadCountForChat(
-            chat['request_id'] ?? chat['part_requests']?['id'], 
-            chat['shop_id'] ?? chat['shops']?['id'],
+            requestId,
+            shopId,
             _currentUserId!,
           );
         } catch (e) {
@@ -252,7 +273,19 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   Future<void> _markChatAsRead(Map<String, dynamic> chat) async {
     if (_currentUserId == null) return;
     
-    final requestId = chat['request_id'] ?? chat['part_requests']?['id'];
+    final requestIdRaw = chat['request_id'] ?? chat['part_requests']?['id'];
+    final requestId = requestIdRaw is String
+        ? requestIdRaw
+        : (requestIdRaw is Map
+            ? requestIdRaw['id'] as String?
+            : (requestIdRaw is List && requestIdRaw.isNotEmpty && requestIdRaw.first is Map
+                ? (requestIdRaw.first as Map)['id'] as String?
+                : null));
+
+    if (requestId == null) {
+      debugPrint('⚠️ [ChatsScreen] Cannot mark messages as read: invalid requestId=$requestIdRaw');
+      return;
+    }
     final shopId = chat['shop_id'] ?? chat['shops']?['id'];
     
     if (requestId == null || shopId == null) {

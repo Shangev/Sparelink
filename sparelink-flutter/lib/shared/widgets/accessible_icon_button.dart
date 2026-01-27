@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/haptic_service.dart';
+
 // =============================================================================
 // ACCESSIBLE ICON BUTTON
 // Pass 2 Phase 5 Implementation
@@ -53,7 +55,7 @@ class AccessibleIconButton extends StatelessWidget {
           onTap: onPressed != null
               ? () {
                   if (enableHaptics) {
-                    HapticFeedback.lightImpact();
+                    HapticService.light();
                   }
                   onPressed!();
                 }
@@ -221,7 +223,7 @@ class AccessibleNotificationButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed != null
               ? () {
-                  HapticFeedback.lightImpact();
+                  HapticService.light();
                   onPressed!();
                 }
               : null,

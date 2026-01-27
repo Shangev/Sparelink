@@ -207,10 +207,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // Get pending offers count separately
         if (totalRequests > 0) {
           try {
+            // Defensive: some environments can return nested structures for id.
+            // Only keep real String UUIDs to avoid PostgREST 400 ("Instance of ...").
             final requestIds = requestsList
-                .map((r) => r['id'])
-                .whereType<String>()  // Filter out nulls and ensure String type
-                .where((id) => id.isNotEmpty)  // Filter out empty strings
+                .map((r) => r is Map ? r['id'] : null)
+                .whereType<String>()
+                .where((id) => id.isNotEmpty)
                 .toList();
             
             // Only query if we have valid request IDs
@@ -220,6 +222,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               int offerCount = 0;
               for (final reqId in requestIds) {
                 try {
+                  // Extra defensive: only query if the id looks like a UUID
+                  if (!RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+                      .hasMatch(reqId)) {
+                    continue;
+                  }
+
                   final offersResponse = await supabase
                       .from('offers')
                       .select('id')

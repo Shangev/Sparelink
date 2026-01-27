@@ -6,6 +6,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/models/marketplace.dart';
 import '../../../shared/models/payment_models.dart';
 import '../../../shared/services/payment_service.dart';
+import '../../../shared/services/haptic_service.dart';
+import '../../../shared/widgets/haptic_buttons.dart';
+import '../../../shared/widgets/haptic_tap.dart';
 import '../../../shared/widgets/responsive_page_layout.dart';
 
 /// Checkout screen for processing payments
@@ -66,6 +69,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       );
 
       if (result.success) {
+        await HapticService.successPattern();
         // Save card if requested and we got authorization code
         if (_saveCard && 
             result.authorizationCode != null &&
@@ -87,11 +91,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _showSuccessDialog(result);
         }
       } else {
+        await HapticService.error();
         setState(() {
           _errorMessage = result.message;
         });
       }
     } catch (e) {
+      await HapticService.error();
       setState(() {
         _errorMessage = 'An error occurred: $e';
       });
@@ -148,9 +154,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  context.go('/order/${widget.order.id}');
+                onPressed: () async {
+                  await HapticService.light();
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                    context.go('/order/${widget.order.id}');
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.accentGreen,
@@ -401,12 +410,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget _buildSavedCardTile(SavedCard card) {
     final isSelected = _selectedCard?.id == card.id;
     
-    return GestureDetector(
+    return HapticTap(
       onTap: () {
         setState(() {
           _selectedCard = isSelected ? null : card;
         });
       },
+      haptic: HapticService.selection,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
@@ -509,7 +519,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         
         // New Card Option
         GestureDetector(
-          onTap: () {
+          onTap: () async {
+            await HapticService.selection();
             setState(() {
               _selectedCard = null;
             });
@@ -574,7 +585,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         if (_selectedCard == null) ...[
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () {
+            onTap: () async {
+              await HapticService.selection();
               setState(() {
                 _saveCard = !_saveCard;
               });
@@ -605,8 +617,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget _buildPayButton() {
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _processPayment,
+      child: HapticElevatedButton(
+        onPressed: _isLoading ? null : () async => _processPayment(),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppTheme.accentGreen,
           foregroundColor: Colors.black,

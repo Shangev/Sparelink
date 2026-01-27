@@ -442,18 +442,22 @@ class SupabaseService {
   
   /// Get offers for a request
   Future<List<Map<String, dynamic>>> getOffersForRequest(String requestId) async {
-    // SAFETY CHECK: Ensure requestId is a valid string, not an object
+    // Defensive: prevent malformed filters (causes PostgREST 400)
     if (requestId.isEmpty) {
       debugPrint('⚠️ [getOffersForRequest] Empty requestId provided');
       return [];
     }
-    
+    if (!_looksLikeUuid(requestId)) {
+      debugPrint('⚠️ [getOffersForRequest] Invalid requestId: $requestId');
+      return [];
+    }
+
     final response = await _client
         .from(SupabaseConstants.offersTable)
         .select('*, shops(*)')
         .eq('request_id', requestId)
         .order('price_cents', ascending: true);
-    
+
     return List<Map<String, dynamic>>.from(response);
   }
   
@@ -925,7 +929,40 @@ class SupabaseService {
   /// instead of the older conversations+messages tables
   /// 
   /// NOTE: For multiple chats, use getUnreadCountsForChatsBatch() instead to avoid N+1 queries
+  bool _looksLikeUuid(String value) {
+    // Basic UUID v4-ish check (also accepts other UUID variants)
+    return RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+        .hasMatch(value);
+  }
+
+  /// Normalizes dynamic IDs coming from loosely-typed JSON.
+  ///
+  /// Supabase can return nested structures (Map/List) depending on select/join.
+  /// This helper extracts a string id when possible.
+  String? _normalizeId(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is Map) {
+      final id = value['id'];
+      return id is String ? id : null;
+    }
+    if (value is List && value.isNotEmpty) {
+      final first = value.first;
+      if (first is Map) {
+        final id = first['id'];
+        return id is String ? id : null;
+      }
+    }
+    return null;
+  }
+
   Future<int> getUnreadCountForChat(String requestId, String shopId, String userId) async {
+    // Defensive: prevent malformed filters (causes PostgREST 400)
+    if (!_looksLikeUuid(requestId) || !_looksLikeUuid(shopId)) {
+      debugPrint('⚠️ [getUnreadCountForChat] Invalid requestId/shopId: $requestId / $shopId');
+      return 0;
+    }
+
     try {
       // Query request_chat_messages directly - this is where chat messages are stored
       final response = await _client
@@ -1016,6 +1053,12 @@ class SupabaseService {
   /// 
   /// FIXED: Queries request_chat_messages directly instead of conversations+messages
   Future<Map<String, dynamic>?> getLastMessageForChat(String requestId, String shopId) async {
+    // Defensive: prevent malformed filters (causes PostgREST 400)
+    if (!_looksLikeUuid(requestId) || !_looksLikeUuid(shopId)) {
+      debugPrint('⚠️ [getLastMessageForChat] Invalid requestId/shopId: $requestId / $shopId');
+      return null;
+    }
+
     try {
       // Query request_chat_messages directly
       final response = await _client

@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../shared/services/haptic_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -402,6 +404,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
   // ==========================================
   
   Future<void> _pickAndSendImage({bool fromCamera = false}) async {
+    await HapticService.light();
     try {
       final XFile? image = fromCamera
           ? await _imagePicker.pickImage(source: ImageSource.camera, imageQuality: 70)
@@ -425,8 +428,10 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
       
       // Send message with image
       await _sendMessageWithAttachment(imageUrl: imageUrl, type: 'image');
+      await HapticService.success();
       
     } catch (e) {
+      await HapticService.error();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to send image: $e'), backgroundColor: Colors.red),
@@ -442,6 +447,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
   // ==========================================
   
   Future<void> _pickAndSendFile() async {
+    await HapticService.light();
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -473,8 +479,10 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
         fileName: file.name,
         type: 'file',
       );
+      await HapticService.success();
       
     } catch (e) {
+      await HapticService.error();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to send file: $e'), backgroundColor: Colors.red),
@@ -717,6 +725,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
   }
   
   Future<void> _cancelVoiceRecording() async {
+    await HapticService.selection();
     await _stopVoiceRecording(send: false);
     
     // Delete the recording file
@@ -733,6 +742,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
   }
   
   Future<void> _sendVoiceMessage(String filePath) async {
+    await HapticService.light();
     if (_conversationId == null || _currentUserId == null) return;
     
     setState(() => _isSending = true);
@@ -771,6 +781,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
         }
       });
       _scrollToBottom();
+      await HapticService.success();
       
       // Clean up local file
       try {
@@ -779,6 +790,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
         // Ignore deletion errors
       }
     } catch (e) {
+      await HapticService.error();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to send voice message: $e'), backgroundColor: Colors.red),
@@ -946,6 +958,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
   }
   
   void _showReactionPicker(String messageId) {
+    HapticService.selection();
     final emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
     
     showModalBottomSheet(
@@ -956,8 +969,11 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: emojis.map((emoji) => GestureDetector(
-            onTap: () {
-              Navigator.pop(ctx);
+            onTap: () async {
+              await HapticService.selection();
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+              }
               _addReaction(messageId, emoji);
             },
             child: Text(emoji, style: const TextStyle(fontSize: 32)),
@@ -1016,8 +1032,11 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
               leading: const Icon(LucideIcons.flag, color: Colors.orange),
               title: const Text('Report User', style: TextStyle(color: Colors.white)),
               subtitle: const Text('Report inappropriate behavior', style: TextStyle(color: _subtitleGray, fontSize: 12)),
-              onTap: () {
-                Navigator.pop(ctx);
+              onTap: () async {
+                await HapticService.selection();
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                }
                 _reportUser();
               },
             ),
@@ -1025,8 +1044,11 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
               leading: const Icon(LucideIcons.ban, color: Colors.red),
               title: const Text('Block User', style: TextStyle(color: Colors.red)),
               subtitle: const Text('Stop receiving messages from this user', style: TextStyle(color: _subtitleGray, fontSize: 12)),
-              onTap: () {
-                Navigator.pop(ctx);
+              onTap: () async {
+                await HapticService.selection();
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                }
                 _blockUser();
               },
             ),
@@ -1124,6 +1146,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
   // ==========================================
   
   Future<void> _archiveChat() async {
+    await HapticService.selection();
     try {
       await Supabase.instance.client
           .from('conversations')
@@ -1131,12 +1154,14 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
           .eq('id', _conversationId!);
       
       if (mounted) {
+        await HapticService.success();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Chat archived'), backgroundColor: Colors.green),
         );
         context.pop();
       }
     } catch (e) {
+      await HapticService.error();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to archive: $e'), backgroundColor: Colors.red),
@@ -1147,6 +1172,9 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
 
   Future<void> _sendMessage() async {
     if (_messageController.text.trim().isEmpty || _isSending) return;
+
+    // Tap haptic (send)
+    await HapticService.light();
     
     if (_conversationId == null) {
       debugPrint('❌ [IndividualChatScreen] Cannot send - no conversation ID');
@@ -1173,6 +1201,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
       );
       
       debugPrint('✅ [IndividualChatScreen] Message sent: ${newMessage['id']}');
+      await HapticService.success();
       
       // Add to local list immediately for responsiveness
       setState(() {
@@ -1183,6 +1212,7 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
       
       _scrollToBottom();
     } catch (e) {
+      await HapticService.error();
       debugPrint('❌ [IndividualChatScreen] Failed to send message: $e');
       // Show error and restore message to input
       if (mounted) {
@@ -1905,7 +1935,10 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
                   children: [
                     // Cancel recording
                     GestureDetector(
-                      onTap: _cancelVoiceRecording,
+                      onTap: () async {
+                        await HapticService.selection();
+                        await _cancelVoiceRecording();
+                      },
                       child: Container(
                         width: 44, height: 44,
                         decoration: const BoxDecoration(
@@ -1937,7 +1970,10 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
                     const SizedBox(width: 8),
                     // Send recording
                     GestureDetector(
-                      onTap: _stopVoiceRecording,
+                      onTap: () async {
+                        await HapticService.light();
+                        await _stopVoiceRecording();
+                      },
                       child: Container(
                         width: 44, height: 44,
                         decoration: const BoxDecoration(
@@ -1952,7 +1988,10 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
               else if (_messageController.text.trim().isEmpty)
                 // Microphone button (when no text)
                 GestureDetector(
-                  onTap: _startVoiceRecording,
+                  onTap: () async {
+                    await HapticService.light();
+                    await _startVoiceRecording();
+                  },
                   child: Container(
                     width: 44, height: 44,
                     decoration: const BoxDecoration(
@@ -1965,7 +2004,11 @@ class _IndividualChatScreenState extends ConsumerState<IndividualChatScreen> {
               else
                 // Send button (when there's text)
                 GestureDetector(
-                  onTap: _isSending ? null : _sendMessage,
+                  onTap: _isSending
+                      ? null
+                      : () async {
+                          await _sendMessage();
+                        },
                   child: Container(
                     width: 44, height: 44,
                     decoration: BoxDecoration(
