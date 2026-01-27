@@ -26,9 +26,6 @@ fi
 
 flutter --version
 
-# Build from the Flutter project directory
-cd sparelink-flutter
-
 # Ensure dependencies
 flutter pub get
 
