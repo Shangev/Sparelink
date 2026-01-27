@@ -18,6 +18,12 @@ fi
 
 export PATH="$FLUTTER_DIR/bin:$PATH"
 
+# Mark Flutter SDK directory as safe for git (Vercel often runs as root and
+# Flutter uses git internally to report version information).
+if command -v git >/dev/null 2>&1; then
+  git config --global --add safe.directory "$FLUTTER_DIR" || true
+fi
+
 flutter --version
 
 # Ensure dependencies
