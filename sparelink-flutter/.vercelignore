@@ -1,0 +1,10 @@
+# Ignore committed legacy static web output.
+public/
+
+# Flutter build artifacts
+build/
+.dart_tool/
+
+# IDE
+.idea/
+.vscode/
