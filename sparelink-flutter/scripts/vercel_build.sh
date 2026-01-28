@@ -4,14 +4,21 @@ set -euo pipefail
 # Vercel build script for Flutter Web.
 # Installs Flutter SDK and builds to build/web.
 
-FLUTTER_VERSION="3.19.6"  # stable-ish; adjust if needed
-FLUTTER_DIR="$HOME/flutter"
+# Flutter 3.22.x ships with Dart >= 3.4 which is required by recent firebase_*_web packages.
+FLUTTER_VERSION="3.22.3"
+# Use a versioned directory so upgrades don't accidentally reuse an older cached SDK.
+FLUTTER_DIR="$HOME/flutter-$FLUTTER_VERSION"
 
 if [ ! -d "$FLUTTER_DIR" ]; then
   echo "Installing Flutter SDK $FLUTTER_VERSION..."
   mkdir -p "$HOME"
   curl -L "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
     | tar -xJ -C "$HOME"
+  # The archive extracts to $HOME/flutter, move it into our versioned directory.
+  if [ -d "$HOME/flutter" ] && [ "$HOME/flutter" != "$FLUTTER_DIR" ]; then
+    rm -rf "$FLUTTER_DIR"
+    mv "$HOME/flutter" "$FLUTTER_DIR"
+  fi
 else
   echo "Flutter SDK already present."
 fi
