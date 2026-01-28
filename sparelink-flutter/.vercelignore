@@ -5,7 +5,7 @@ public/
 Sparelink/
 
 # Flutter build artifacts
-build/
+# NOTE: Do NOT ignore `build/` because Vercel's output directory is `build/web`.
 .dart_tool/
 
 # IDE
