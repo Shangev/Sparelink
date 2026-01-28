@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Vercel build script for Flutter Web.
-# Installs Flutter SDK (cached in /tmp across steps) and builds to build/web.
+# Installs Flutter SDK and builds to build/web.
 
 FLUTTER_VERSION="3.19.6"  # stable-ish; adjust if needed
 FLUTTER_DIR="$HOME/flutter"
@@ -18,10 +18,21 @@ fi
 
 export PATH="$FLUTTER_DIR/bin:$PATH"
 
-# Mark Flutter SDK directory as safe for git (Vercel often runs as root and
-# Flutter uses git internally to report version information).
+# Make builds non-interactive/CI friendly
+export CI=1
+export FLUTTER_SUPPRESS_ANALYTICS=true
+export DART_SUPPRESS_ANALYTICS=true
+
+# Ensure pub cache is writable and consistent
+export PUB_CACHE="${PUB_CACHE:-$HOME/.pub-cache}"
+mkdir -p "$PUB_CACHE"
+
+# Mark directories as safe for git.
+# Vercel sometimes executes builds with different users/ownership which can trip
+# git's "dubious ownership" protection (used by Flutter internally).
 if command -v git >/dev/null 2>&1; then
   git config --global --add safe.directory "$FLUTTER_DIR" || true
+  git config --global --add safe.directory "$PWD" || true
 fi
 
 flutter --version

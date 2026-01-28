@@ -1,6 +1,9 @@
 # Ignore committed legacy static web output.
 public/
 
+# Former submodule directory (should not be deployed)
+Sparelink/
+
 # Flutter build artifacts
 build/
 .dart_tool/

@@ -1,0 +1,2 @@
+# Ensure shell scripts keep LF endings (important for Linux CI/Vercel)
+*.sh text eol=lf
